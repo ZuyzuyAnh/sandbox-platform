@@ -9,6 +9,8 @@ ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 COPY package*.json ./
 RUN npm ci
 COPY . .
+# Next.js optional static assets directory (may be empty)
+RUN mkdir -p public
 RUN npm run build
 
 FROM node:20-alpine AS runner
