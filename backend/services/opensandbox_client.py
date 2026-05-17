@@ -64,6 +64,43 @@ async def fetch_logs(sandbox_id: str) -> str:
         return resp.text
 
 
+def _parse_execd_metrics(data: dict) -> dict[str, float | None]:
+    """Normalize execd /metrics JSON to dashboard fields."""
+    cpu = (
+        data.get("cpu_used_pct")
+        or data.get("cpu_used_percentage")
+        or data.get("cpuUsedPercentage")
+        or data.get("cpu_percent")
+    )
+    mem = (
+        data.get("mem_used_mib")
+        or data.get("memory_used_in_mib")
+        or data.get("memoryUsedInMiB")
+        or data.get("memory_mb")
+    )
+    return {
+        "cpu_percent": float(cpu) if cpu is not None else None,
+        "memory_mb": float(mem) if mem is not None else None,
+    }
+
+
+async def get_sandbox_metrics(sandbox_id: str) -> dict[str, float | None] | None:
+    """Fetch live CPU/memory from execd via the OpenSandbox server proxy."""
+    try:
+        _, headers = await _fetch_endpoint(sandbox_id, EXECD_PORT)
+        async with httpx.AsyncClient(
+            base_url=settings.opensandbox_url, timeout=10.0
+        ) as client:
+            resp = await client.get(
+                f"/v1/sandboxes/{sandbox_id}/proxy/{EXECD_PORT}/metrics",
+                headers=headers,
+            )
+            resp.raise_for_status()
+            return _parse_execd_metrics(resp.json())
+    except Exception:
+        return None
+
+
 async def get_sandbox(sandbox_id: str) -> dict:
     async with httpx.AsyncClient(base_url=settings.opensandbox_url, timeout=15.0) as client:
         resp = await client.get(f"/v1/sandboxes/{sandbox_id}")

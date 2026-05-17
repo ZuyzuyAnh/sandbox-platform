@@ -10,8 +10,8 @@ export interface Sandbox {
   status: SandboxStatus
   agent: string | null
   task: string | null
-  cpu_percent: number
-  memory_mb: number
+  cpu_percent: number | null
+  memory_mb: number | null
   elapsed_seconds: number
   created_at: string | null
 }
@@ -27,7 +27,6 @@ export interface Metrics {
   active_count: number
   completed_today: number
   avg_duration_seconds: number
-  security_incidents: number
 }
 
 export type EventType = 'started' | 'output' | 'completed' | 'error' | 'timeout' | 'thought' | 'tool_use' | 'code'

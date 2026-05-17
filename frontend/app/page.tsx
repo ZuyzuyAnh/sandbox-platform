@@ -12,8 +12,8 @@ export default function Home() {
     <div className="flex flex-col h-screen">
       {/* Topbar */}
       <header className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200 flex-shrink-0">
-        <span className="text-base font-semibold text-gray-900">OpenSandbox</span>
-        <span className="text-sm text-gray-500">Sandbox fleet overview</span>
+        <span className="text-base font-semibold text-gray-900">Flezi sandbox</span>
+        <span className="text-sm text-gray-500">Flezi sandbox overview</span>
         <span className="flex items-center gap-1.5 text-sm text-emerald-600 font-medium">
           <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
           All operational

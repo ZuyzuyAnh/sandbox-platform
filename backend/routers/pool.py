@@ -41,5 +41,4 @@ async def get_metrics(db: AsyncSession = Depends(get_db)):
         "active_count": len(sandboxes),
         "completed_today": completed_today,
         "avg_duration_seconds": avg_duration,
-        "security_incidents": 0,
     }

@@ -21,8 +21,7 @@ export default function MetricsBar() {
 
   if (isLoading || !metrics) {
     return (
-      <div className="grid grid-cols-4 gap-4">
-        <SkeletonCard />
+      <div className="grid grid-cols-3 gap-4">
         <SkeletonCard />
         <SkeletonCard />
         <SkeletonCard />
@@ -31,7 +30,7 @@ export default function MetricsBar() {
   }
 
   return (
-    <div className="grid grid-cols-4 gap-4">
+    <div className="grid grid-cols-3 gap-4">
       <div className="bg-white rounded-lg border border-gray-200 p-4">
         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Active sandboxes</p>
         <p className="text-3xl font-bold text-gray-900 mt-1">{metrics.active_count}</p>
@@ -50,13 +49,6 @@ export default function MetricsBar() {
         <p className="text-xs text-gray-400 mt-1">Across active sandboxes</p>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Security issues</p>
-        <p className="text-3xl font-bold text-gray-900 mt-1">{metrics.security_incidents}</p>
-        <p className={`text-xs mt-1 ${metrics.security_incidents === 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-          {metrics.security_incidents === 0 ? 'No violations' : `${metrics.security_incidents} violation(s) detected`}
-        </p>
-      </div>
     </div>
   )
 }
