@@ -66,13 +66,40 @@ sudo systemctl enable --now docker
 sudo usermod -aG docker ec2-user
 ```
 
-Log out and back in so `docker` works without sudo.
+Log out and back in so `docker` works without sudo (`docker ps` without `sudo`).
 
-Install Compose plugin:
+Install **Compose** and **Buildx** (not in default AL2023 repos):
 
 ```bash
-sudo dnf install -y docker-compose-plugin
+# Compose v2 plugin
+sudo mkdir -p /usr/local/lib/docker/cli-plugins
+sudo curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+# Buildx (required for `docker compose build` on recent Compose)
+ARCH=amd64
+[ "$(uname -m)" = "aarch64" ] && ARCH=arm64
+BUILDX_VERSION=v0.20.1
+sudo curl -SL "https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-${ARCH}" \
+  -o /usr/local/lib/docker/cli-plugins/docker-buildx
+sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
+
 docker compose version
+docker buildx version
+```
+
+If `docker ps` still says “permission denied”, run `newgrp docker` or log out and SSH in again.
+
+If you see **`compose build requires buildx 0.17.0 or later`**, install plugins (use the same user/sudo you use for compose):
+
+```bash
+chmod +x deploy/install-docker-plugins.sh
+./deploy/install-docker-plugins.sh
+# or: sudo ./deploy/install-docker-plugins.sh
+
+docker buildx version   # must show 0.17+
+sudo docker compose -f docker-compose.prod.yaml --env-file .env.production up -d --build
 ```
 
 ---
