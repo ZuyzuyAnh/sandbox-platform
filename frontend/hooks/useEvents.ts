@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { fetchActivity } from '@/lib/api'
+import { wsBase } from '@/lib/origin'
 import { SandboxEvent } from '@/types'
 
 const MAX_EVENTS = 50
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL
 
 export function useEvents() {
   const [events, setEvents] = useState<SandboxEvent[]>([])
@@ -13,7 +13,7 @@ export function useEvents() {
       .then(data => setEvents(data.events))
       .catch(console.error)
 
-    const ws = new WebSocket(`${WS_URL}/api/events`)
+    const ws = new WebSocket(`${wsBase()}/api/events`)
 
     ws.onmessage = (e) => {
       try {

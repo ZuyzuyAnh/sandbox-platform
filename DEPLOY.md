@@ -200,30 +200,122 @@ docker compose -f docker-compose.prod.yaml logs opensandbox
 
 ---
 
-## Step 6 — HTTPS (recommended)
+## Step 6 — Fix CORS (HTTP now)
 
-On the EC2 host:
+The dashboard and API must use the **same protocol** (both `http` or both `https`).
 
-```bash
-sudo dnf install -y certbot python3-certbot-nginx
+The frontend uses **same-origin** requests when `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL` are **empty** in `.env.production` (recommended). Then opening `http://18.141.116.75` calls `http://18.141.116.75/api/...` automatically.
+
+**Root `.env.production`:**
+
+```env
+NEXT_PUBLIC_API_URL=
+NEXT_PUBLIC_WS_URL=
 ```
 
-Point a DNS A record at your Elastic IP, then:
+**`backend/.env.production`:**
 
-```bash
-# Stop nginx container temporarily if certbot needs port 80
-sudo certbot certonly --standalone -d your-domain.com
+```env
+CORS_ORIGINS=http://18.141.116.75
+OPENSANDBOX_SESSION_HOST=18.141.116.75
 ```
 
-Mount certificates into nginx or terminate TLS on the host — update `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WS_URL`, `CORS_ORIGINS`, and `OPENSANDBOX_SESSION_HOST` / `OPENSANDBOX_SESSION_EIP` to `https://your-domain.com`, then rebuild frontend:
+Rebuild and redeploy:
 
 ```bash
-docker compose -f docker-compose.prod.yaml --env-file .env.production up -d --build frontend nginx
+git pull   # get latest frontend (origin.ts)
+sudo docker compose -f docker-compose.prod.yaml --env-file .env.production up -d --build frontend
+sudo docker compose -f docker-compose.prod.yaml --env-file .env.production up -d --force-recreate backend nginx
 ```
+
+Hard-refresh the browser (Ctrl+Shift+R).
 
 ---
 
-## Step 7 — Operations
+## Step 7 — HTTPS with free Let's Encrypt
+
+Let's Encrypt does **not** issue certificates for a bare IP address. You need a **domain name** (e.g. `sandbox.example.com`) with an **A record** pointing to your EC2 public IP.
+
+### 7a. DNS
+
+| Type | Name | Value |
+|------|------|--------|
+| A | `sandbox` (or `@`) | `18.141.116.75` |
+
+Wait until `dig sandbox.example.com +short` returns your IP.
+
+### 7b. Get certificate
+
+```bash
+cd ~/sandbox
+chmod +x deploy/setup-https.sh
+sudo ./deploy/setup-https.sh sandbox.example.com
+```
+
+This stops nginx briefly and runs `certbot certonly --standalone`.
+
+### 7c. Enable HTTPS in Docker nginx
+
+Edit `docker-compose.prod.yaml` **nginx** service:
+
+```yaml
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+      - ./deploy/nginx-ssl.conf:/etc/nginx/conf.d/default.conf:ro   # after sed below
+```
+
+Replace `YOUR_DOMAIN` in the SSL config:
+
+```bash
+sed "s/YOUR_DOMAIN/sandbox.example.com/g" deploy/nginx-ssl.conf > deploy/nginx-active.conf
+```
+
+Point the volume at `deploy/nginx-active.conf` instead of `nginx-ssl.conf`.
+
+### 7d. Update environment for HTTPS
+
+**Root `.env.production`:**
+
+```env
+OPENSANDBOX_SESSION_EIP=sandbox.example.com
+NEXT_PUBLIC_API_URL=
+NEXT_PUBLIC_WS_URL=
+```
+
+**`backend/.env.production`:**
+
+```env
+OPENSANDBOX_SESSION_HOST=sandbox.example.com
+CORS_ORIGINS=https://sandbox.example.com
+```
+
+### 7e. Redeploy
+
+```bash
+sudo docker compose -f docker-compose.prod.yaml --env-file .env.production up -d --force-recreate opensandbox
+sudo docker compose -f docker-compose.prod.yaml --env-file .env.production up -d --build frontend
+sudo docker compose -f docker-compose.prod.yaml --env-file .env.production up -d nginx
+```
+
+Open **`https://sandbox.example.com`**.
+
+### 7f. Renew certificates (every ~90 days)
+
+```bash
+sudo certbot renew --dry-run
+```
+
+Add a cron job: `0 3 * * * certbot renew --quiet && docker compose -f /home/ec2-user/sandbox/docker-compose.prod.yaml --env-file /home/ec2-user/sandbox/.env.production restart nginx`
+
+---
+
+## Step 8 — Operations
 
 | Task | Command |
 |------|---------|
@@ -258,7 +350,10 @@ Use `backend/.env` and `frontend/.env.local` (see `backend/.env.example`).
 | `backend/.env.production.example` | Backend (copy → `backend/.env.production`) |
 | `frontend/.env.production.example` | Frontend build URLs |
 | `docker-compose.prod.yaml` | Production stack |
-| `deploy/nginx.conf` | Reverse proxy |
+| `deploy/nginx.conf` | Reverse proxy (HTTP) |
+| `deploy/nginx-ssl.conf` | Reverse proxy (HTTPS + Let's Encrypt) |
+| `deploy/setup-https.sh` | Certbot helper script |
+| `frontend/lib/origin.ts` | Same-origin API/WebSocket URLs |
 | `deploy/opensandbox-entrypoint.sh` | OpenSandbox server bootstrap |
 
 ---

@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { fetchSandboxOutput } from '@/lib/api'
+import { wsBase } from '@/lib/origin'
 import { OutputLine } from '@/types'
-
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL
 
 export function useSandboxOutput(sandboxId: string | null) {
   const [lines, setLines] = useState<OutputLine[]>([])
@@ -22,7 +21,7 @@ export function useSandboxOutput(sandboxId: string | null) {
       .catch(console.error)
       .finally(() => setIsLoading(false))
 
-    const ws = new WebSocket(`${WS_URL}/api/events`)
+    const ws = new WebSocket(`${wsBase()}/api/events`)
 
     ws.onmessage = (e) => {
       try {
