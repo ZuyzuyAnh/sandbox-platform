@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/nho/OpenSandbox/examples/vscode/**)",
+      "Read(//home/nho/OpenSandbox/server/**)",
+      "Bash(find /home/nho/OpenSandbox/specs/ -type f 2>/dev/null | head -20)",
+      "Read(//home/nho/OpenSandbox/**)",
+      "Bash(find /home/nho/OpenSandbox/sdks/ -type f 2>/dev/null | head -20)"
+    ]
+  }
+}

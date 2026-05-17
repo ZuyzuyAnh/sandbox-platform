@@ -1,0 +1,44 @@
+import os
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _env_file() -> str:
+    return os.getenv("ENV_FILE", ".env")
+
+
+def _settings_config() -> SettingsConfigDict:
+    kwargs: dict = {"env_file_encoding": "utf-8", "extra": "ignore"}
+    path = _env_file()
+    if os.path.isfile(path):
+        kwargs["env_file"] = path
+    return SettingsConfigDict(**kwargs)
+
+
+class Settings(BaseSettings):
+    model_config = _settings_config()
+
+    opensandbox_url: str = "http://localhost:8080"
+    # Public host for VS Code session URLs (must match OpenSandbox [server].eip).
+    opensandbox_session_host: str = "localhost"
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/opensandbox"
+    redis_url: str = "redis://localhost:6379"
+    poll_interval_seconds: int = 3
+    activity_log_max_events: int = 50
+    default_sandbox_cpu: str = "500m"
+    default_sandbox_memory: str = "512Mi"
+    default_sandbox_timeout: int = 600
+    vscode_image: str = (
+        "sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/vscode:latest"
+    )
+    session_ttl_seconds: int = 1800
+    # Comma-separated browser origins allowed to call the API (e.g. https://app.example.com).
+    cors_origins: str = "http://localhost:3000,http://localhost:3001"
+    # Optional — legacy POST /api/spawn (Claude Code task sandboxes) only.
+    anthropic_auth_token: str = ""
+
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+
+settings = Settings()

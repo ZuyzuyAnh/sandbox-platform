@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/home/nho/sandbox/.venv/bin/pip install *)",
+      "Bash(npm install *)"
+    ]
+  }
+}

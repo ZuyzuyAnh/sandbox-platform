@@ -1,0 +1,68 @@
+# Local development — infrastructure + OpenSandbox (run backend/frontend on the host).
+#   docker compose up -d
+#   cd backend && uvicorn main:app --reload --port 8000
+#   cd frontend && npm run dev
+
+name: opensandbox-dashboard-dev
+
+networks:
+  opensandbox-sandbox:
+    name: opensandbox-sandbox
+    driver: bridge
+
+services:
+  vscode-image-pull:
+    image: ${VSCODE_IMAGE:-sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/vscode:latest}
+    entrypoint: ["echo", "VS Code base image ready"]
+    pull_policy: always
+    restart: "no"
+
+  opensandbox:
+    depends_on:
+      vscode-image-pull:
+        condition: service_completed_successfully
+    image: python:3.12-slim
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./deploy/opensandbox-entrypoint.sh:/entrypoint.sh:ro
+    environment:
+      OPENSANDBOX_INSECURE_SERVER: "YES"
+      OPENSANDBOX_SESSION_EIP: ${OPENSANDBOX_SESSION_HOST:-localhost}
+      OPENSANDBOX_DOCKER_NETWORK: opensandbox-sandbox
+    networks:
+      - opensandbox-sandbox
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: opensandbox
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

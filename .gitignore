@@ -1,0 +1,21 @@
+# Environment files (secrets)
+.env
+.env.production
+backend/.env
+backend/.env.production
+frontend/.env.local
+frontend/.env.production
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
