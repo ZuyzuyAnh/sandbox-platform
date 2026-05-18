@@ -30,7 +30,10 @@ services:
     environment:
       OPENSANDBOX_INSECURE_SERVER: "YES"
       OPENSANDBOX_SESSION_EIP: ${OPENSANDBOX_SESSION_EIP}
-      OPENSANDBOX_DOCKER_NETWORK: opensandbox-sandbox
+      OPENSANDBOX_DOCKER_NETWORK: ${OPENSANDBOX_DOCKER_NETWORK:-bridge}
+      OPENSANDBOX_EGRESS_ENABLED: ${OPENSANDBOX_EGRESS_ENABLED:-0}
+      OPENSANDBOX_EGRESS_IMAGE: ${OPENSANDBOX_EGRESS_IMAGE:-sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/egress:latest}
+      OPENSANDBOX_EGRESS_MODE: ${OPENSANDBOX_EGRESS_MODE:-dns+nft}
     networks:
       - opensandbox-sandbox
       - app
@@ -69,6 +72,8 @@ services:
       context: ./backend
     env_file:
       - ./backend/.env.production
+    volumes:
+      - ./deploy:/deploy:ro
     depends_on:
       postgres:
         condition: service_healthy

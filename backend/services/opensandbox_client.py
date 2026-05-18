@@ -1,9 +1,14 @@
 import asyncio
+import json
+import logging
 import re
+from pathlib import Path
 
 import httpx
 
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 EXECD_PORT = 44772
 VSCODE_PORT = 8443
@@ -23,6 +28,17 @@ def _sanitize_label(value: str) -> str:
     return sanitized[:63]
 
 
+def load_network_policy() -> dict | None:
+    path = (settings.sandbox_network_policy_path or "").strip()
+    if not path:
+        return None
+    policy_path = Path(path)
+    if not policy_path.is_file():
+        logger.warning("sandbox_network_policy_path not found: %s", path)
+        return None
+    return json.loads(policy_path.read_text(encoding="utf-8"))
+
+
 async def create_sandbox(
     image: str,
     timeout: int,
@@ -30,6 +46,7 @@ async def create_sandbox(
     entrypoint: list[str] | None = None,
     args: list[str] | None = None,
     env: dict | None = None,
+    network_policy: dict | None = None,
 ) -> dict:
     safe_metadata = {k: _sanitize_label(str(v)) for k, v in metadata.items()}
     body: dict = {
@@ -45,6 +62,8 @@ async def create_sandbox(
         body["entrypoint"] = entrypoint + (args or [])
     if env:
         body["env"] = env
+    if network_policy:
+        body["networkPolicy"] = network_policy
     async with httpx.AsyncClient(base_url=settings.opensandbox_url, timeout=120.0) as client:
         resp = await client.post("/v1/sandboxes", json=body)
         resp.raise_for_status()
@@ -199,6 +218,7 @@ async def create_vscode_sandbox(
     timeout: int,
     env: dict,
     metadata: dict,
+    network_policy: dict | None = None,
 ) -> dict:
     """Create a sandbox; code-server is started later via execd."""
     return await create_sandbox(
@@ -208,6 +228,7 @@ async def create_vscode_sandbox(
         metadata=metadata,
         entrypoint=["/bin/bash", "-c"],
         args=["tail -f /dev/null"],
+        network_policy=network_policy or load_network_policy(),
     )
 
 

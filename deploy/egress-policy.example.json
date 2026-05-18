@@ -1,0 +1,11 @@
+{
+  "defaultAction": "deny",
+  "egress": [
+    { "action": "allow", "target": "marketplace.visualstudio.com" },
+    { "action": "allow", "target": "*.vscode-cdn.net" },
+    { "action": "allow", "target": "vscode.download.prss.microsoft.com" },
+    { "action": "allow", "target": "open-vsx.org" },
+    { "action": "allow", "target": "*.open-vsx.org" },
+    { "action": "allow", "target": "update.code.visualstudio.com" }
+  ]
+}

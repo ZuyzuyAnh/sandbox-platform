@@ -315,7 +315,90 @@ Add a cron job: `0 3 * * * certbot renew --quiet && docker compose -f /home/ec2-
 
 ---
 
-## Step 8 — Operations
+## Step 8 — Egress control (optional demo / production hardening)
+
+OpenSandbox can **block all outbound traffic by default** and allow only listed domains (FQDN allowlist). This requires:
+
+1. Docker **`network_mode = bridge`** (not `opensandbox-sandbox`)
+2. **`[egress]`** configured on the OpenSandbox server
+3. **`networkPolicy`** on each sandbox create (Flezi reads a JSON file)
+
+### 8a. Enable on EC2
+
+SSH to the instance, `cd ~/sandbox`, `git pull`, then edit **`.env.production`**:
+
+```env
+OPENSANDBOX_DOCKER_NETWORK=bridge
+OPENSANDBOX_EGRESS_ENABLED=1
+OPENSANDBOX_EGRESS_IMAGE=sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/egress:latest
+OPENSANDBOX_EGRESS_MODE=dns+nft
+```
+
+Edit **`backend/.env.production`**:
+
+```env
+SANDBOX_NETWORK_POLICY_PATH=/deploy/network-policy.demo.json
+```
+
+Use `deploy/egress-policy.example.json` for marketplace-focused rules (copy or point the path at it).
+
+Pull images and redeploy:
+
+```bash
+sudo docker pull sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/egress:latest
+sudo docker compose -f docker-compose.prod.yaml --env-file .env.production up -d --build opensandbox backend
+```
+
+Confirm OpenSandbox started with egress (logs should show `[egress]`):
+
+```bash
+sudo docker compose -f docker-compose.prod.yaml logs opensandbox 2>&1 | tail -30
+```
+
+### 8b. Demo in a VS Code session
+
+1. Open the dashboard → start a **new** session (old sessions have no egress sidecar).
+2. In the integrated terminal:
+
+```bash
+curl -sv --max-time 10 https://httpbin.org/get    # allowed (demo policy)
+curl -sv --max-time 10 https://example.com        # blocked (default deny)
+```
+
+3. **Terminal output** shows success vs `Could not resolve host` / timeout — good for live demos.
+4. **Flezi Activity log** does not show these curls; egress audit is on the host:
+
+```bash
+sudo docker ps --format '{{.Names}}' | grep egress
+sudo docker logs "$(sudo docker ps -q -f name=sandbox-egress)" 2>&1 | tail -40
+```
+
+### 8c. Customize allowlist
+
+Edit `deploy/network-policy.demo.json` (or your copy), then restart backend only if the path unchanged — **new sessions** pick up the file at create time.
+
+To disable egress and return to the custom sandbox network:
+
+```env
+OPENSANDBOX_EGRESS_ENABLED=0
+OPENSANDBOX_DOCKER_NETWORK=opensandbox-sandbox
+```
+
+Remove or comment `SANDBOX_NETWORK_POLICY_PATH` in `backend/.env.production`, recreate opensandbox.
+
+### 8d. Tradeoffs
+
+| With egress | Without egress (default) |
+|-------------|---------------------------|
+| `bridge` network + sidecar | `opensandbox-sandbox` network |
+| Default-deny outbound DNS | Full outbound internet from sandbox |
+| Extra memory per session (sidecar) | Simpler, current production path |
+
+Session URLs still use **`OPENSANDBOX_SESSION_EIP`** and high ports on the EC2 host; security group **32768–61000** remains required.
+
+---
+
+## Step 9 — Operations
 
 | Task | Command |
 |------|---------|
@@ -355,6 +438,8 @@ Use `backend/.env` and `frontend/.env.local` (see `backend/.env.example`).
 | `deploy/setup-https.sh` | Certbot helper script |
 | `frontend/lib/origin.ts` | Same-origin API/WebSocket URLs |
 | `deploy/opensandbox-entrypoint.sh` | OpenSandbox server bootstrap |
+| `deploy/network-policy.demo.json` | Demo egress allowlist (httpbin + marketplace) |
+| `deploy/egress-policy.example.json` | Marketplace-oriented allowlist template |
 
 ---
 

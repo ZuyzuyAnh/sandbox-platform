@@ -32,6 +32,9 @@ class Settings(BaseSettings):
         "sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/vscode:latest"
     )
     session_ttl_seconds: int = 1800
+    # Optional JSON file (defaultAction + egress rules) passed as networkPolicy on create.
+    # Requires OpenSandbox [egress] + docker network_mode=bridge on the server.
+    sandbox_network_policy_path: str = ""
     # Comma-separated browser origins allowed to call the API (e.g. https://app.example.com).
     cors_origins: str = "http://localhost:3000,http://localhost:3001"
     # Optional — legacy POST /api/spawn (Claude Code task sandboxes) only.
