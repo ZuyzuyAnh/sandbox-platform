@@ -26,6 +26,7 @@ class SessionResponse(BaseModel):
     status: str
     created_at: str
     expires_at: str
+    user_email: str | None = None
 
 
 class SessionListResponse(BaseModel):

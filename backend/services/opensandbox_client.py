@@ -64,10 +64,13 @@ async def create_sandbox(
         body["env"] = env
     if network_policy:
         body["networkPolicy"] = network_policy
+    logger.info("create_sandbox networkPolicy=%s", body.get("networkPolicy"))
     async with httpx.AsyncClient(base_url=settings.opensandbox_url, timeout=120.0) as client:
         resp = await client.post("/v1/sandboxes", json=body)
         resp.raise_for_status()
-        return resp.json()
+        result = resp.json()
+        logger.info("create_sandbox id=%s", result.get("id"))
+        return result
 
 
 async def delete_sandbox(sandbox_id: str) -> None:
@@ -221,6 +224,8 @@ async def create_vscode_sandbox(
     network_policy: dict | None = None,
 ) -> dict:
     """Create a sandbox; code-server is started later via execd."""
+    if network_policy is None and settings.enable_network_policy:
+        network_policy = load_network_policy()
     return await create_sandbox(
         image=image,
         timeout=timeout,
@@ -228,7 +233,7 @@ async def create_vscode_sandbox(
         metadata=metadata,
         entrypoint=["/bin/bash", "-c"],
         args=["tail -f /dev/null"],
-        network_policy=network_policy or load_network_policy(),
+        network_policy=network_policy,
     )
 
 

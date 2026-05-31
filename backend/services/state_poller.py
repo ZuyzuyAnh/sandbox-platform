@@ -2,6 +2,8 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+import httpx
+
 from config import settings
 from services.opensandbox_client import get_sandbox_metrics, list_sandboxes
 
@@ -76,6 +78,8 @@ async def poll_loop() -> None:
                 if sid not in _sandbox_state:
                     del _first_seen[sid]
 
+        except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ConnectTimeout):
+            logger.warning("OpenSandbox not reachable, will retry in %ds", settings.poll_interval_seconds)
         except Exception:
             logger.error("State poller error", exc_info=True)
 

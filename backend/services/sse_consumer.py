@@ -54,9 +54,11 @@ async def _flush_logs(sid: str, agent: str | None, seen_lines: set[str]) -> None
         text = await fetch_logs(sid)
         for line in text.splitlines():
             line = line.strip()
-            if line and line not in seen_lines:
-                seen_lines.add(line)
-                await _write_event(_make_event(sid, classify_line(line), line, agent))
+            # OpenSandbox returns "(no logs)" literally when the container has no output.
+            if not line or line == "(no logs)" or line in seen_lines:
+                continue
+            seen_lines.add(line)
+            await _write_event(_make_event(sid, classify_line(line), line, agent))
     except Exception:
         pass
 
@@ -114,6 +116,10 @@ async def consume_loop() -> None:
         try:
             for sandbox in get_all_sandboxes():
                 sid = sandbox["id"]
+                # Skip VSCode sessions — they run `tail -f /dev/null` and produce no
+                # meaningful agent output. Only track agent task sandboxes.
+                if sandbox.get("agent") is None:
+                    continue
                 if sandbox.get("status") in ("running", "queued") and sid not in _active:
                     _active.add(sid)
                     asyncio.create_task(_track_sandbox(sandbox))

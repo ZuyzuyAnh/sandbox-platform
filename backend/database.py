@@ -1,3 +1,4 @@
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 
@@ -21,5 +22,11 @@ async def init_db() -> None:
     import models.sandbox  # noqa: F401
     import models.event  # noqa: F401
     import models.session  # noqa: F401
+    import models.user  # noqa: F401
+    import models.group  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Idempotent migrations for columns added after initial table creation.
+        await conn.execute(
+            text("ALTER TABLE vscode_sessions ADD COLUMN IF NOT EXISTS user_id VARCHAR")
+        )

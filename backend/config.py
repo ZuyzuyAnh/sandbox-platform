@@ -35,10 +35,17 @@ class Settings(BaseSettings):
     # Optional JSON file (defaultAction + egress rules) passed as networkPolicy on create.
     # Requires OpenSandbox [egress] + docker network_mode=bridge on the server.
     sandbox_network_policy_path: str = ""
+    # Set to true only when OpenSandbox is configured with network_mode=bridge.
+    # When false, networkPolicy is never sent (required for network_mode=opensandbox-sandbox).
+    enable_network_policy: bool = False
     # Comma-separated browser origins allowed to call the API (e.g. https://app.example.com).
     cors_origins: str = "http://localhost:3000,http://localhost:3001"
     # Optional — legacy POST /api/spawn (Claude Code task sandboxes) only.
     anthropic_auth_token: str = ""
+    # Auth
+    secret_key: str = "change-me-in-production"
+    admin_email: str = "admin@example.com"
+    admin_password: str = "changeme"
 
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
