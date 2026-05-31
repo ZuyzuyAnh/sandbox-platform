@@ -19,8 +19,9 @@ const EVENT_STYLES: Record<EventType, { icon: string; color: string }> = {
   error:     { icon: '✕', color: 'text-red-500' },
   timeout:   { icon: '⚠', color: 'text-amber-500' },
   thought:   { icon: '💭', color: 'text-gray-400' },
-  tool_use:  { icon: '🔧', color: 'text-amber-500' },
-  code:      { icon: '»', color: 'text-green-500' },
+  tool_use:       { icon: '🔧', color: 'text-amber-500' },
+  code:           { icon: '»', color: 'text-green-500' },
+  policy_changed: { icon: '🛡', color: 'text-purple-500' },
 }
 
 function EventRow({ event }: { event: SandboxEvent }) {
