@@ -21,8 +21,7 @@ export default function MetricsBar() {
 
   if (isLoading || !metrics) {
     return (
-      <div className="grid grid-cols-3 gap-4">
-        <SkeletonCard />
+      <div className="grid grid-cols-2 gap-4">
         <SkeletonCard />
         <SkeletonCard />
       </div>
@@ -30,7 +29,7 @@ export default function MetricsBar() {
   }
 
   return (
-    <div className="grid grid-cols-3 gap-4">
+    <div className="grid grid-cols-2 gap-4">
       <div className="bg-white rounded-lg border border-gray-200 p-4">
         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Active sandboxes</p>
         <p className="text-3xl font-bold text-gray-900 mt-1">{metrics.active_count}</p>
@@ -38,17 +37,10 @@ export default function MetricsBar() {
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Completed today</p>
-        <p className="text-3xl font-bold text-gray-900 mt-1">{metrics.completed_today}</p>
-        <p className="text-xs text-gray-400 mt-1">Since midnight UTC</p>
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Avg duration</p>
         <p className="text-3xl font-bold text-gray-900 mt-1">{formatDuration(metrics.avg_duration_seconds)}</p>
         <p className="text-xs text-gray-400 mt-1">Across active sandboxes</p>
       </div>
-
     </div>
   )
 }

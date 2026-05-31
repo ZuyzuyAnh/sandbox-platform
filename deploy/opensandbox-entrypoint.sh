@@ -22,6 +22,9 @@ if [ "${EGRESS_ENABLED}" = "1" ]; then
     echo "ERROR: OPENSANDBOX_EGRESS_ENABLED=1 requires OPENSANDBOX_DOCKER_NETWORK=bridge" >&2
     exit 1
   fi
+  # Strip any existing [egress] block the example config may already contain,
+  # then append our own — TOML forbids duplicate table headers.
+  sed -i '/^\[egress\]/,/^\[/{/^\[egress\]/d;/^\[/!d}' /tmp/sandbox.toml
   cat >> /tmp/sandbox.toml <<EOF
 
 [egress]

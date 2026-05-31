@@ -3,6 +3,11 @@ import { fetchSandboxOutput } from '@/lib/api'
 import { wsBase } from '@/lib/origin'
 import { OutputLine } from '@/types'
 
+function getToken(): string | null {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem('auth_token')
+}
+
 export function useSandboxOutput(sandboxId: string | null) {
   const [lines, setLines] = useState<OutputLine[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -21,7 +26,11 @@ export function useSandboxOutput(sandboxId: string | null) {
       .catch(console.error)
       .finally(() => setIsLoading(false))
 
-    const ws = new WebSocket(`${wsBase()}/api/events`)
+    const token = getToken()
+    const url = token ? `${wsBase()}/api/events?token=${encodeURIComponent(token)}` : null
+    if (!url) return
+
+    const ws = new WebSocket(url)
 
     ws.onmessage = (e) => {
       try {

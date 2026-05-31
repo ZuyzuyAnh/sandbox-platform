@@ -5,6 +5,11 @@ import { SandboxEvent } from '@/types'
 
 const MAX_EVENTS = 50
 
+function getToken(): string | null {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem('auth_token')
+}
+
 export function useEvents() {
   const [events, setEvents] = useState<SandboxEvent[]>([])
 
@@ -13,7 +18,11 @@ export function useEvents() {
       .then(data => setEvents(data.events))
       .catch(console.error)
 
-    const ws = new WebSocket(`${wsBase()}/api/events`)
+    const token = getToken()
+    const url = token ? `${wsBase()}/api/events?token=${encodeURIComponent(token)}` : null
+    if (!url) return
+
+    const ws = new WebSocket(url)
 
     ws.onmessage = (e) => {
       try {

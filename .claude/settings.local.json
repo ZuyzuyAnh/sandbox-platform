@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(/home/nho/sandbox/.venv/bin/pip install *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(curl -s http://localhost:8080/openapi.json)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

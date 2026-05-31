@@ -1,3 +1,41 @@
+export interface User {
+  id: string
+  email: string
+  role: 'user' | 'admin'
+}
+
+export interface EgressRule {
+  action: 'allow' | 'deny'
+  target: string
+}
+
+export interface NetworkPolicy {
+  defaultAction: 'deny' | 'allow'
+  egress: EgressRule[]
+}
+
+export interface Group {
+  id: string
+  name: string
+  description: string | null
+  network_policy: NetworkPolicy
+  member_count?: number
+}
+
+export interface GroupMember {
+  id: string
+  email: string
+  role: string
+}
+
+export interface UserRecord {
+  id: string
+  email: string
+  role: string
+  is_active: boolean
+  groups: string[]
+}
+
 export type SandboxStatus = 'running' | 'queued' | 'completed' | 'error'
 
 export type Agent = 'Claude Code' | 'OpenAI Codex' | 'Qwen Code'
@@ -29,7 +67,7 @@ export interface Metrics {
   avg_duration_seconds: number
 }
 
-export type EventType = 'started' | 'output' | 'completed' | 'error' | 'timeout' | 'thought' | 'tool_use' | 'code'
+export type EventType = 'started' | 'output' | 'completed' | 'error' | 'timeout' | 'thought' | 'tool_use' | 'code' | 'policy_changed'
 
 export interface SandboxEvent {
   id: string
@@ -74,9 +112,15 @@ export interface Session {
   status: string
   created_at: string
   expires_at: string
+  user_email?: string
 }
 
 export interface SessionListResponse {
   sessions: Session[]
   total: number
+}
+
+export interface LogLine {
+  line: string
+  ts: string
 }

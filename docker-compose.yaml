@@ -31,7 +31,8 @@ services:
     environment:
       OPENSANDBOX_INSECURE_SERVER: "YES"
       OPENSANDBOX_SESSION_EIP: ${OPENSANDBOX_SESSION_HOST:-localhost}
-      OPENSANDBOX_DOCKER_NETWORK: opensandbox-sandbox
+      OPENSANDBOX_DOCKER_NETWORK: bridge
+      OPENSANDBOX_EGRESS_ENABLED: "1"
     networks:
       - opensandbox-sandbox
     restart: unless-stopped
