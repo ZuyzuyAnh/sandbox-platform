@@ -4,7 +4,17 @@
       "Bash(/home/nho/sandbox/.venv/bin/pip install *)",
       "Bash(npm install *)",
       "Bash(curl -s http://localhost:8080/openapi.json)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(curl *)",
+      "Read(//run/podman/**)",
+      "Read(//Users/cuongdv47.ec/.local/share/containers/podman/**)",
+      "Bash(podman info *)",
+      "Bash(podman system *)",
+      "Bash(podman machine *)",
+      "WebSearch",
+      "Bash(python3 -m venv .venv)",
+      "Bash(.venv/bin/pip install *)"
     ]
   }
 }
