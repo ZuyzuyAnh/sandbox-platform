@@ -125,59 +125,44 @@ export interface LogLine {
   ts: string
 }
 
-// ── Virtual API Keys ────────────────────────────────────────────────────────
+// ── LLM Gateway: config ─────────────────────────────────────────────────────
 
-export interface VirtualApiKey {
+export interface LLMConfig {
+  provider: string
+  endpoint_url: string
+  model_name: string
+  api_version: string | null
+}
+
+export interface LLMConfigUpdate extends LLMConfig {
+  api_key: string
+}
+
+// ── LLM Gateway: virtual keys ───────────────────────────────────────────────
+
+export interface VirtualKey {
   id: string
-  name: string
-  key_prefix: string        // e.g. "sk-vk-abc1"
-  user_id: string
-  user_email: string
-  model_access: string[]    // e.g. ["claude-3-5-sonnet", "gpt-4o"]
-  token_limit: number | null
-  tokens_used: number
+  key_prefix: string
+  label: string | null
   is_active: boolean
   created_at: string
-  last_used_at: string | null
-}
-
-export interface CreateVirtualApiKeyRequest {
-  name: string
   user_id: string
-  model_access: string[]
-  token_limit: number | null
 }
 
-// ── AI Usage Analytics ──────────────────────────────────────────────────────
-
-export interface UsageDataPoint {
-  date: string
-  tokens_input: number
-  tokens_output: number
-  requests: number
-  cost_usd: number
+/** Returned once at creation — includes the full key. */
+export interface VirtualKeyCreated extends VirtualKey {
+  key: string
 }
 
-export interface UsageByModel {
+// ── LLM Gateway: token usage (one record per message) ───────────────────────
+
+export interface TokenUsage {
+  id: string
+  user_id: string
+  virtual_key_id: string
+  session_id: string | null
   model: string
-  tokens: number
-  requests: number
-  cost_usd: number
-}
-
-export interface UsageByUser {
-  user_email: string
-  tokens: number
-  requests: number
-  cost_usd: number
-}
-
-export interface UsageSummary {
-  total_tokens: number
-  total_requests: number
-  total_cost_usd: number
-  active_keys: number
-  daily: UsageDataPoint[]
-  by_model: UsageByModel[]
-  by_user: UsageByUser[]
+  input_tokens: number
+  output_tokens: number
+  created_at: string
 }

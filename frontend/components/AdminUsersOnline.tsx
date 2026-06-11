@@ -42,13 +42,13 @@ export default function AdminUsersOnline() {
 
   return (
     <div className="flex flex-col">
-      <h2 className="text-xs font-semibold text-[#94A3B8] uppercase tracking-widest mb-2">
+      <h2 className="text-[10px] font-semibold text-fg-subtle uppercase tracking-widest mb-2">
         Users online
-        <span className="ml-2 text-[#475569] normal-case tracking-normal">({Object.keys(byUser).length})</span>
+        <span className="ml-2 text-fg-subtle/70 normal-case tracking-normal">({Object.keys(byUser).length})</span>
       </h2>
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-xs text-[#475569] border-b border-[#334155]">
+          <tr className="text-left text-xs text-fg-subtle border-b border-line">
             <th className="pb-1.5 font-medium">User</th>
             <th className="pb-1.5 font-medium">Sessions</th>
             <th className="pb-1.5 font-medium">Expires</th>
@@ -62,15 +62,15 @@ export default function AdminUsersOnline() {
             )
             const anyTerminating = userSessions.some(s => terminating.has(s.sandbox_id))
             return (
-              <tr key={email} className="border-b border-[#1E293B] last:border-0">
-                <td className="py-2 pr-4 text-xs text-[#94A3B8]">{email}</td>
-                <td className="py-2 pr-4 text-xs font-mono text-[#64748B]">{userSessions.length}</td>
-                <td className="py-2 pr-4 text-xs font-mono text-[#64748B]">{formatExpiry(earliest.expires_at)}</td>
+              <tr key={email} className="border-b border-line/50 last:border-0">
+                <td className="py-2 pr-4 text-xs text-fg-muted">{email}</td>
+                <td className="py-2 pr-4 text-xs font-mono text-fg-subtle">{userSessions.length}</td>
+                <td className="py-2 pr-4 text-xs font-mono text-fg-subtle">{formatExpiry(earliest.expires_at)}</td>
                 <td className="py-2">
                   <button
                     onClick={() => terminateAll(email)}
                     disabled={anyTerminating}
-                    className="px-2.5 py-1 text-xs rounded-md bg-[#334155] text-[#94A3B8] hover:bg-[rgba(239,68,68,0.15)] hover:text-[#EF4444] disabled:opacity-50 transition-colors cursor-pointer"
+                    className="px-2.5 py-1 text-xs rounded-md bg-raised text-fg-muted hover:bg-danger/15 hover:text-danger disabled:opacity-50 transition-colors cursor-pointer"
                   >
                     {anyTerminating ? '...' : 'Terminate all'}
                   </button>

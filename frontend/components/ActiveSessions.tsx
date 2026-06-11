@@ -24,11 +24,11 @@ function SessionRow({ session, onTerminate }: { session: Session; onTerminate: (
   }
 
   return (
-    <tr className="border-b border-[#1E293B] last:border-0">
-      <td className={`py-2 pr-4 font-mono text-xs ${expired ? 'text-[#475569]' : 'text-[#94A3B8]'}`}>
+    <tr className="border-b border-line/50 last:border-0">
+      <td className={`py-2 pr-4 font-mono text-xs ${expired ? 'text-fg-subtle' : 'text-fg-muted'}`}>
         {session.sandbox_id.slice(0, 8)}
       </td>
-      <td className={`py-2 pr-4 font-mono text-xs ${expired ? 'text-[#475569]' : 'text-[#64748B]'}`}>
+      <td className={`py-2 pr-4 font-mono text-xs ${expired ? 'text-fg-subtle' : 'text-fg-subtle'}`}>
         {formatExpiry(session.expires_at)}
       </td>
       <td className="py-2 pr-2">
@@ -37,7 +37,7 @@ function SessionRow({ session, onTerminate }: { session: Session; onTerminate: (
             href={session.session_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-2.5 py-1 text-xs rounded-md bg-[rgba(168,85,247,0.15)] text-[#A855F7] hover:bg-[rgba(168,85,247,0.25)] transition-colors"
+            className="px-2.5 py-1 text-xs font-medium rounded-md bg-accent/15 text-accent hover:bg-accent/25 transition-colors"
           >
             Open
           </a>
@@ -47,7 +47,8 @@ function SessionRow({ session, onTerminate }: { session: Session; onTerminate: (
         <button
           onClick={handleTerminate}
           disabled={terminating}
-          className="px-2.5 py-1 text-xs rounded-md bg-[#334155] text-[#64748B] hover:bg-[rgba(239,68,68,0.15)] hover:text-[#EF4444] disabled:opacity-50 transition-colors cursor-pointer"
+          aria-label="Terminate session"
+          className="px-2.5 py-1 text-xs rounded-md bg-raised text-fg-subtle hover:bg-danger/15 hover:text-danger disabled:opacity-50 transition-colors cursor-pointer"
         >
           {terminating ? '...' : '✕'}
         </button>
@@ -68,18 +69,18 @@ export default function ActiveSessions() {
 
   return (
     <div className="flex flex-col">
-      <h2 className="text-xs font-semibold text-[#94A3B8] uppercase tracking-widest mb-2">
+      <h2 className="text-[10px] font-semibold text-fg-subtle uppercase tracking-widest mb-2">
         Active VS Code sessions
         {sessions.length > 0 && (
-          <span className="ml-2 text-[#475569] normal-case tracking-normal">({sessions.length})</span>
+          <span className="ml-2 text-fg-subtle/70 normal-case tracking-normal">({sessions.length})</span>
         )}
       </h2>
       {isLoading ? (
-        <div className="text-xs text-[#475569] animate-pulse">Loading sessions...</div>
+        <div className="h-4 w-40 skeleton rounded" />
       ) : (
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-xs text-[#475569] border-b border-[#334155]">
+            <tr className="text-left text-xs text-fg-subtle border-b border-line">
               <th className="pb-1.5 font-medium">Session</th>
               <th className="pb-1.5 font-medium">Expires</th>
               <th className="pb-1.5 font-medium" colSpan={2}>Actions</th>

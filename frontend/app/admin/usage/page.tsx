@@ -1,356 +1,362 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell, Legend,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { MOCK_USAGE_SUMMARY } from '@/lib/mock-ai-data'
-import type { UsageDataPoint } from '@/types'
+import { fetchTokenUsage, fetchUsers, fetchVirtualKeys } from '@/lib/api'
+import { useChartColors } from '@/lib/theme'
+import type { TokenUsage, VirtualKey } from '@/types'
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatTokens(n: number) {
+function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return n.toString()
+  return n.toLocaleString()
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+function dayKey(iso: string): string {
+  return iso.slice(0, 10)
 }
 
-const MODEL_COLORS: Record<string, string> = {
-  'claude-sonnet-4-6': '#22C55E',
-  'claude-haiku-4-5': '#3B82F6',
-  'claude-opus-4-8': '#A855F7',
-  'gpt-4o': '#F59E0B',
-  'gpt-4o-mini': '#FB923C',
-  'gemini-1.5-pro': '#06B6D4',
-  'gemini-1.5-flash': '#84CC16',
+function formatDay(key: string): string {
+  return new Date(`${key}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-function getModelColor(model: string) {
-  return MODEL_COLORS[model] ?? '#64748B'
+type Range = '7d' | '14d' | '30d'
+const RANGE_DAYS: Record<Range, number> = { '7d': 7, '14d': 14, '30d': 30 }
+
+function exportCSV(rows: TokenUsage[]) {
+  const header = 'created_at,model,input_tokens,output_tokens,virtual_key_id,session_id,user_id'
+  const lines = rows.map(r =>
+    `${r.created_at},${r.model},${r.input_tokens},${r.output_tokens},${r.virtual_key_id},${r.session_id ?? ''},${r.user_id}`
+  )
+  const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `llm-usage-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
-// ── Shared Tooltip ───────────────────────────────────────────────────────────
+// ── UI bits ──────────────────────────────────────────────────────────────────
 
 const ChartTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-[#1E293B] border border-[#334155] rounded-lg p-3 shadow-xl text-xs">
-      <p className="text-[#94A3B8] mb-2 font-medium">{label}</p>
+    <div className="bg-surface border border-line rounded-lg p-3 shadow-xl text-xs">
+      <p className="text-fg-muted mb-2 font-medium">{label}</p>
       {payload.map((p: any) => (
-        <div key={p.name} className="flex items-center gap-2 mb-1">
+        <div key={p.name} className="flex items-center gap-2 mb-1 last:mb-0">
           <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: p.color ?? p.fill }} />
-          <span className="text-[#94A3B8]">{p.name}:</span>
-          <span className="text-[#F8FAFC] font-mono ml-auto pl-3">
-            {typeof p.value === 'number' && p.name?.toLowerCase().includes('token')
-              ? formatTokens(p.value)
-              : typeof p.value === 'number' && p.name?.toLowerCase().includes('cost')
-              ? `$${p.value.toFixed(4)}`
-              : p.value}
-          </span>
+          <span className="text-fg-subtle">{p.name}</span>
+          <span className="text-fg font-mono ml-auto pl-4">{formatTokens(p.value)}</span>
         </div>
       ))}
     </div>
   )
 }
 
-// ── Stat Card ─────────────────────────────────────────────────────────────────
-
-function StatCard({ label, value, sub, icon, accent }: { label: string; value: string; sub?: string; icon: React.ReactNode; accent: string }) {
+function StatCard({ label, value, sub, delay }: { label: string; value: string; sub?: string; delay: number }) {
   return (
-    <div className="bg-[#1E293B] border border-[#334155] rounded-xl p-4">
-      <div className="flex items-start justify-between mb-3">
-        <p className="text-xs text-[#64748B]">{label}</p>
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${accent}22`, color: accent }}>
-          {icon}
-        </div>
-      </div>
-      <p className="text-2xl font-semibold font-mono text-[#F8FAFC]">{value}</p>
-      {sub && <p className="text-xs text-[#64748B] mt-1">{sub}</p>}
+    <div className="bg-surface border border-line rounded-xl p-4 animate-rise" style={{ animationDelay: `${delay}ms` }}>
+      <p className="text-[10px] font-medium text-fg-subtle uppercase tracking-widest mb-1">{label}</p>
+      <p className="text-2xl font-bold font-mono text-fg">{value}</p>
+      {sub && <p className="text-xs text-fg-subtle mt-1">{sub}</p>}
     </div>
   )
 }
 
-// ── Chart Card ───────────────────────────────────────────────────────────────
-
-function ChartCard({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div className="bg-[#1E293B] border border-[#334155] rounded-xl p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-[#F8FAFC]">{title}</h3>
-        {action}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-// ── Export helper ─────────────────────────────────────────────────────────────
-
-function exportCSV(data: UsageDataPoint[]) {
-  const header = 'date,tokens_input,tokens_output,requests,cost_usd'
-  const rows = data.map(d => `${d.date},${d.tokens_input},${d.tokens_output},${d.requests},${d.cost_usd}`)
-  const csv = [header, ...rows].join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `ai-usage-${new Date().toISOString().slice(0, 10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-// ── Main Page ────────────────────────────────────────────────────────────────
-
-type Range = '7d' | '14d' | '30d'
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function UsagePage() {
+  const [usage, setUsage] = useState<TokenUsage[]>([])
+  const [keys, setKeys] = useState<VirtualKey[]>([])
+  const [emailByUserId, setEmailByUserId] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [range, setRange] = useState<Range>('30d')
-  const [metric, setMetric] = useState<'tokens' | 'requests' | 'cost'>('tokens')
+  const colors = useChartColors()
 
-  const summary = MOCK_USAGE_SUMMARY
+  useEffect(() => {
+    Promise.all([
+      fetchTokenUsage(),
+      fetchVirtualKeys().catch(() => [] as VirtualKey[]),
+      fetchUsers().catch(() => []),
+    ])
+      .then(([u, k, users]) => {
+        setUsage(u)
+        setKeys(k)
+        setEmailByUserId(Object.fromEntries(users.map(x => [x.id, x.email])))
+      })
+      .catch(e => setError(e instanceof Error ? e.message : 'Failed to load usage'))
+      .finally(() => setLoading(false))
+  }, [])
 
-  const dailySlice = useMemo(() => {
-    const n = range === '7d' ? 7 : range === '14d' ? 14 : 30
-    return summary.daily.slice(-n)
-  }, [range, summary.daily])
+  const keyLabel = useMemo(() => {
+    const m: Record<string, string> = {}
+    for (const k of keys) m[k.id] = k.label ?? `${k.key_prefix}...`
+    return m
+  }, [keys])
 
-  const chartData = useMemo(() => {
-    return dailySlice.map(d => ({
-      date: formatDate(d.date),
-      'Input tokens': d.tokens_input,
-      'Output tokens': d.tokens_output,
-      Requests: d.requests,
-      'Cost ($)': d.cost_usd,
+  // Rows inside the selected range
+  const rows = useMemo(() => {
+    const cutoff = Date.now() - RANGE_DAYS[range] * 86_400_000
+    return usage.filter(r => new Date(r.created_at).getTime() >= cutoff)
+  }, [usage, range])
+
+  // Daily aggregation (fill empty days so the chart has a continuous axis)
+  const daily = useMemo(() => {
+    const byDay = new Map<string, { input: number; output: number; requests: number }>()
+    for (let i = RANGE_DAYS[range] - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86_400_000)
+      byDay.set(dayKey(d.toISOString()), { input: 0, output: 0, requests: 0 })
+    }
+    for (const r of rows) {
+      const k = dayKey(r.created_at)
+      const agg = byDay.get(k)
+      if (!agg) continue
+      agg.input += r.input_tokens
+      agg.output += r.output_tokens
+      agg.requests += 1
+    }
+    return Array.from(byDay.entries()).map(([k, v]) => ({
+      date: formatDay(k),
+      Input: v.input,
+      Output: v.output,
+      requests: v.requests,
     }))
-  }, [dailySlice])
+  }, [rows, range])
+
+  const byModel = useMemo(() => {
+    const m = new Map<string, { tokens: number; requests: number }>()
+    for (const r of rows) {
+      const agg = m.get(r.model) ?? { tokens: 0, requests: 0 }
+      agg.tokens += r.input_tokens + r.output_tokens
+      agg.requests += 1
+      m.set(r.model, agg)
+    }
+    return Array.from(m.entries())
+      .map(([model, v]) => ({ model, ...v }))
+      .sort((a, b) => b.tokens - a.tokens)
+  }, [rows])
+
+  const byKey = useMemo(() => {
+    const m = new Map<string, { tokens: number; requests: number; userId: string }>()
+    for (const r of rows) {
+      const agg = m.get(r.virtual_key_id) ?? { tokens: 0, requests: 0, userId: r.user_id }
+      agg.tokens += r.input_tokens + r.output_tokens
+      agg.requests += 1
+      m.set(r.virtual_key_id, agg)
+    }
+    return Array.from(m.entries())
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => b.tokens - a.tokens)
+  }, [rows])
+
+  const totals = useMemo(() => {
+    let input = 0
+    let output = 0
+    for (const r of rows) {
+      input += r.input_tokens
+      output += r.output_tokens
+    }
+    return { input, output, tokens: input + output, requests: rows.length }
+  }, [rows])
+
+  const maxKeyTokens = byKey[0]?.tokens ?? 1
+
+  if (loading) {
+    return (
+      <div className="max-w-5xl mx-auto p-6">
+        <div className="h-6 w-48 skeleton rounded mb-2" />
+        <div className="h-4 w-72 skeleton rounded mb-6" />
+        <div className="grid grid-cols-4 gap-3 mb-4">
+          {[0, 1, 2, 3].map(i => <div key={i} className="h-24 skeleton rounded-xl" />)}
+        </div>
+        <div className="h-64 skeleton rounded-xl" />
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-[#0F172A] p-6 animate-fade-in">
+    <div className="max-w-5xl mx-auto p-6 animate-rise">
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-xl font-semibold text-[#F8FAFC] mb-1">AI Usage Analytics</h1>
-          <p className="text-sm text-[#64748B]">Token consumption, request volume and cost breakdown across all keys.</p>
+          <h1 className="text-xl font-semibold font-display tracking-tight mb-1">Usage analytics</h1>
+          <p className="text-sm text-fg-subtle">Token consumption across the gateway. One record per proxied message.</p>
         </div>
         <button
-          onClick={() => exportCSV(dailySlice)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1E293B] border border-[#334155] text-sm text-[#94A3B8] hover:text-[#F8FAFC] hover:border-[#475569] transition-colors cursor-pointer"
+          onClick={() => exportCSV(rows)}
+          disabled={rows.length === 0}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface border border-line text-sm text-fg-muted hover:text-fg hover:border-fg-subtle/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M2 11h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M2 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
           Export CSV
         </button>
       </div>
 
+      {error && (
+        <p role="alert" className="mb-4 text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">{error}</p>
+      )}
+
+      {/* Range selector */}
+      <div className="flex gap-1 bg-surface border border-line rounded-lg p-1 w-fit mb-4">
+        {(Object.keys(RANGE_DAYS) as Range[]).map(r => (
+          <button
+            key={r}
+            onClick={() => setRange(r)}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+              range === r ? 'bg-raised text-fg' : 'text-fg-subtle hover:text-fg-muted'
+            }`}
+          >
+            {r}
+          </button>
+        ))}
+      </div>
+
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <StatCard
-          label="Total Tokens"
-          value={formatTokens(summary.total_tokens)}
-          sub="Last 30 days"
-          accent="#A855F7"
-          icon={<svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="4" width="13" height="7" rx="2" stroke="currentColor" strokeWidth="1.3"/><path d="M5 7h5M5 9h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>}
-        />
-        <StatCard
-          label="Total Requests"
-          value={summary.total_requests.toLocaleString()}
-          sub={`~${Math.round(summary.total_requests / 30)}/day avg`}
-          accent="#3B82F6"
-          icon={<svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M2 4h11M2 7.5h11M2 11h7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>}
-        />
-        <StatCard
-          label="Total Cost"
-          value={`$${summary.total_cost_usd.toFixed(2)}`}
-          sub="Estimated spend"
-          accent="#F59E0B"
-          icon={<svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" strokeWidth="1.3"/><path d="M7.5 4v7M5.5 5.5h2.5a1.5 1.5 0 0 1 0 3H5.5h3a1.5 1.5 0 0 1 0 3H5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>}
-        />
-        <StatCard
-          label="Active Keys"
-          value={summary.active_keys.toString()}
-          sub="Generating traffic"
-          accent="#22C55E"
-          icon={<svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="5.5" cy="6.5" r="3" stroke="currentColor" strokeWidth="1.3"/><path d="M8 9l5 4M11 10l1.5 1.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>}
-        />
+      <div className="grid grid-cols-4 gap-3 mb-4">
+        <StatCard label="Total tokens" value={formatTokens(totals.tokens)} sub={`Last ${RANGE_DAYS[range]} days`} delay={0} />
+        <StatCard label="Input tokens" value={formatTokens(totals.input)} delay={50} />
+        <StatCard label="Output tokens" value={formatTokens(totals.output)} delay={100} />
+        <StatCard label="Requests" value={totals.requests.toLocaleString()} sub={`${keys.filter(k => k.is_active).length} active keys`} delay={150} />
       </div>
 
-      {/* Range + metric selector */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex gap-1 bg-[#1E293B] border border-[#334155] rounded-lg p-1">
-          {(['7d', '14d', '30d'] as Range[]).map(r => (
-            <button key={r} onClick={() => setRange(r)} className={`px-3 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${range === r ? 'bg-[#334155] text-[#F8FAFC]' : 'text-[#64748B] hover:text-[#94A3B8]'}`}>
-              {r}
-            </button>
-          ))}
+      {rows.length === 0 ? (
+        /* Empty state */
+        <div className="bg-surface border border-line rounded-2xl flex flex-col items-center justify-center py-20 gap-4">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" className="text-fg-subtle opacity-40">
+            <path d="M4 32L13 20l7 7 12-16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M25 11h7v7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <div className="text-center">
+            <p className="text-sm font-medium text-fg-muted mb-1">No usage recorded yet</p>
+            <p className="text-xs text-fg-subtle max-w-sm">
+              Token usage appears here once Claude Code inside a sandbox starts sending requests through the gateway with a virtual key.
+            </p>
+          </div>
         </div>
-        <div className="flex gap-1 bg-[#1E293B] border border-[#334155] rounded-lg p-1">
-          {([['tokens', 'Tokens'], ['requests', 'Requests'], ['cost', 'Cost']] as const).map(([m, label]) => (
-            <button key={m} onClick={() => setMetric(m)} className={`px-3 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${metric === m ? 'bg-[#334155] text-[#F8FAFC]' : 'text-[#64748B] hover:text-[#94A3B8]'}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Main area chart */}
-      <ChartCard title="Daily Usage Trend">
-        <ResponsiveContainer width="100%" height={220}>
-          {metric === 'tokens' ? (
-            <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="gradInput" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#22C55E" stopOpacity={0.2}/>
-                  <stop offset="95%" stopColor="#22C55E" stopOpacity={0}/>
-                </linearGradient>
-                <linearGradient id="gradOutput" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2}/>
-                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
-              <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748B' }} axisLine={false} tickLine={false} interval={range === '7d' ? 0 : range === '14d' ? 1 : 4} />
-              <YAxis tick={{ fontSize: 10, fill: '#64748B' }} axisLine={false} tickLine={false} tickFormatter={v => formatTokens(v)} width={46} />
-              <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" dataKey="Input tokens" stroke="#22C55E" strokeWidth={1.5} fill="url(#gradInput)" />
-              <Area type="monotone" dataKey="Output tokens" stroke="#3B82F6" strokeWidth={1.5} fill="url(#gradOutput)" />
-            </AreaChart>
-          ) : metric === 'requests' ? (
-            <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="gradReq" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#A855F7" stopOpacity={0.2}/>
-                  <stop offset="95%" stopColor="#A855F7" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
-              <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748B' }} axisLine={false} tickLine={false} interval={range === '7d' ? 0 : range === '14d' ? 1 : 4} />
-              <YAxis tick={{ fontSize: 10, fill: '#64748B' }} axisLine={false} tickLine={false} width={40} />
-              <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" dataKey="Requests" stroke="#A855F7" strokeWidth={1.5} fill="url(#gradReq)" />
-            </AreaChart>
-          ) : (
-            <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="gradCost" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.2}/>
-                  <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
-              <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748B' }} axisLine={false} tickLine={false} interval={range === '7d' ? 0 : range === '14d' ? 1 : 4} />
-              <YAxis tick={{ fontSize: 10, fill: '#64748B' }} axisLine={false} tickLine={false} tickFormatter={v => `$${v.toFixed(2)}`} width={46} />
-              <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" dataKey="Cost ($)" stroke="#F59E0B" strokeWidth={1.5} fill="url(#gradCost)" />
-            </AreaChart>
-          )}
-        </ResponsiveContainer>
-      </ChartCard>
-
-      {/* Bottom row: model breakdown + user breakdown */}
-      <div className="grid grid-cols-2 gap-4 mt-4">
-        {/* Model bar chart */}
-        <ChartCard title="Tokens by Model">
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={summary.by_model} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 10, fill: '#64748B' }} axisLine={false} tickLine={false} tickFormatter={v => formatTokens(v)} />
-              <YAxis type="category" dataKey="model" tick={{ fontSize: 10, fill: '#94A3B8', fontFamily: 'Fira Code, monospace' }} axisLine={false} tickLine={false} width={120} />
-              <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="tokens" radius={[0, 4, 4, 0]} name="Tokens">
-                {summary.by_model.map((entry) => (
-                  <Cell key={entry.model} fill={getModelColor(entry.model)} fillOpacity={0.85} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        {/* User donut */}
-        <ChartCard title="Token Share by User">
-          <div className="flex items-center gap-4">
-            <ResponsiveContainer width="50%" height={180}>
-              <PieChart>
-                <Pie
-                  data={summary.by_user}
-                  dataKey="tokens"
-                  nameKey="user_email"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={72}
-                  strokeWidth={2}
-                  stroke="#0F172A"
-                >
-                  {summary.by_user.map((_, i) => (
-                    <Cell key={i} fill={['#22C55E', '#3B82F6', '#F59E0B', '#A855F7', '#06B6D4'][i % 5]} />
-                  ))}
-                </Pie>
+      ) : (
+        <>
+          {/* Daily trend */}
+          <div className="bg-surface border border-line rounded-xl p-5 mb-4">
+            <h3 className="text-sm font-semibold font-display text-fg mb-4">Daily token usage</h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={daily} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="gradOut" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={colors.accent} stopOpacity={0.25} />
+                    <stop offset="95%" stopColor={colors.accent} stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="gradIn" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={colors.neutral} stopOpacity={0.2} />
+                    <stop offset="95%" stopColor={colors.neutral} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: colors.tick }} axisLine={false} tickLine={false} interval={range === '7d' ? 0 : range === '14d' ? 1 : 4} />
+                <YAxis tick={{ fontSize: 10, fill: colors.tick }} axisLine={false} tickLine={false} tickFormatter={v => formatTokens(v)} width={48} />
                 <Tooltip content={<ChartTooltip />} />
-              </PieChart>
+                <Area type="monotone" dataKey="Input" stroke={colors.neutral} strokeWidth={1.5} fill="url(#gradIn)" />
+                <Area type="monotone" dataKey="Output" stroke={colors.accent} strokeWidth={1.8} fill="url(#gradOut)" />
+              </AreaChart>
             </ResponsiveContainer>
-            <div className="flex-1 flex flex-col gap-2">
-              {summary.by_user.map((u, i) => {
-                const color = ['#22C55E', '#3B82F6', '#F59E0B', '#A855F7', '#06B6D4'][i % 5]
-                const pct = ((u.tokens / summary.total_tokens) * 100).toFixed(1)
-                return (
-                  <div key={u.user_email} className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: color }} />
-                    <span className="text-xs text-[#94A3B8] truncate flex-1">{u.user_email.split('@')[0]}</span>
-                    <span className="text-xs font-mono text-[#64748B]">{pct}%</span>
-                  </div>
-                )
-              })}
+            <div className="flex items-center gap-5 mt-2">
+              <span className="flex items-center gap-1.5 text-xs text-fg-subtle">
+                <span className="w-2.5 h-0.5 rounded-full" style={{ background: colors.accent }} /> Output
+              </span>
+              <span className="flex items-center gap-1.5 text-xs text-fg-subtle">
+                <span className="w-2.5 h-0.5 rounded-full" style={{ background: colors.neutral }} /> Input
+              </span>
             </div>
           </div>
-        </ChartCard>
-      </div>
 
-      {/* Detailed table */}
-      <div className="mt-4 bg-[#1E293B] border border-[#334155] rounded-xl overflow-hidden">
-        <div className="px-5 py-3 border-b border-[#334155] flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#F8FAFC]">Per-Model Breakdown</h3>
-          <span className="text-xs text-[#64748B]">Last 30 days</span>
-        </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[#334155]">
-              {['Model', 'Tokens', 'Requests', 'Cost', 'Share'].map(h => (
-                <th key={h} className="px-5 py-2.5 text-left text-xs font-medium text-[#64748B]">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {summary.by_model.map((m, i) => {
-              const share = (m.tokens / summary.total_tokens) * 100
-              return (
-                <tr key={m.model} className={`border-b border-[#1E293B] hover:bg-[#0F172A]/40 transition-colors ${i % 2 === 1 ? 'bg-[#0F172A]/20' : ''}`}>
-                  <td className="px-5 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-sm" style={{ background: getModelColor(m.model) }} />
-                      <span className="font-mono text-xs text-[#F8FAFC]">{m.model}</span>
+          {/* Model + key breakdown */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-surface border border-line rounded-xl p-5">
+              <h3 className="text-sm font-semibold font-display text-fg mb-4">Tokens by model</h3>
+              <ResponsiveContainer width="100%" height={Math.max(140, byModel.length * 44)}>
+                <BarChart data={byModel} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 10, fill: colors.tick }} axisLine={false} tickLine={false} tickFormatter={v => formatTokens(v)} />
+                  <YAxis type="category" dataKey="model" tick={{ fontSize: 10, fill: colors.muted, fontFamily: 'Fira Code, monospace' }} axisLine={false} tickLine={false} width={130} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: 'transparent' }} />
+                  <Bar dataKey="tokens" name="Tokens" radius={[0, 4, 4, 0]} maxBarSize={18}>
+                    {byModel.map((_, i) => (
+                      <Cell key={i} fill={colors.series[i % colors.series.length]} fillOpacity={0.9} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="bg-surface border border-line rounded-xl p-5">
+              <h3 className="text-sm font-semibold font-display text-fg mb-4">Top keys</h3>
+              <div className="flex flex-col gap-3">
+                {byKey.slice(0, 6).map(k => (
+                  <div key={k.id}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-fg-muted truncate">
+                        {keyLabel[k.id] ?? <span className="font-mono">{k.id.slice(0, 8)}...</span>}
+                        <span className="text-fg-subtle ml-2">{emailByUserId[k.userId] ?? ''}</span>
+                      </span>
+                      <span className="text-xs font-mono text-fg-subtle flex-shrink-0 pl-3">
+                        {formatTokens(k.tokens)} · {k.requests} req
+                      </span>
                     </div>
-                  </td>
-                  <td className="px-5 py-2.5 font-mono text-xs text-[#94A3B8]">{formatTokens(m.tokens)}</td>
-                  <td className="px-5 py-2.5 font-mono text-xs text-[#94A3B8]">{m.requests.toLocaleString()}</td>
-                  <td className="px-5 py-2.5 font-mono text-xs text-[#94A3B8]">${m.cost_usd.toFixed(2)}</td>
-                  <td className="px-5 py-2.5 min-w-[120px]">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 rounded-full bg-[#334155] overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${share}%`, background: getModelColor(m.model) }} />
-                      </div>
-                      <span className="text-[10px] font-mono text-[#64748B] w-8 text-right">{share.toFixed(1)}%</span>
+                    <div className="h-1.5 bg-raised rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-accent transition-all duration-700"
+                        style={{ width: `${(k.tokens / maxKeyTokens) * 100}%` }}
+                      />
                     </div>
-                  </td>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Recent requests */}
+          <div className="mt-4 bg-surface border border-line rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-line flex items-center justify-between">
+              <h3 className="text-sm font-semibold font-display text-fg">Recent requests</h3>
+              <span className="text-xs text-fg-subtle">{rows.length.toLocaleString()} in range</span>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line bg-raised/40">
+                  {['Time', 'Model', 'Key', 'User', 'Input', 'Output'].map(h => (
+                    <th key={h} className="px-5 py-2 text-left text-xs font-medium text-fg-subtle">{h}</th>
+                  ))}
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {rows.slice(0, 12).map(r => (
+                  <tr key={r.id} className="border-b border-line/50 last:border-0 hover:bg-raised/40 transition-colors">
+                    <td className="px-5 py-2.5 text-xs text-fg-subtle whitespace-nowrap" title={new Date(r.created_at).toLocaleString()}>
+                      {new Date(r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td className="px-5 py-2.5 font-mono text-xs text-fg-muted">{r.model}</td>
+                    <td className="px-5 py-2.5 text-xs text-fg-muted truncate max-w-[140px]">
+                      {keyLabel[r.virtual_key_id] ?? <span className="font-mono">{r.virtual_key_id.slice(0, 8)}...</span>}
+                    </td>
+                    <td className="px-5 py-2.5 text-xs text-fg-subtle truncate max-w-[160px]">
+                      {emailByUserId[r.user_id] ?? <span className="font-mono">{r.user_id.slice(0, 8)}</span>}
+                    </td>
+                    <td className="px-5 py-2.5 font-mono text-xs text-fg-subtle">{r.input_tokens.toLocaleString()}</td>
+                    <td className="px-5 py-2.5 font-mono text-xs text-accent">{r.output_tokens.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   )
 }

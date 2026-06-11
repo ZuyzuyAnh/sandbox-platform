@@ -3,6 +3,8 @@ import {
   ActivityResponse,
   Group,
   GroupMember,
+  LLMConfig,
+  LLMConfigUpdate,
   Metrics,
   NetworkPolicy,
   PoolResponse,
@@ -11,8 +13,11 @@ import {
   SessionListResponse,
   SpawnRequest,
   SpawnResponse,
+  TokenUsage,
   User,
   UserRecord,
+  VirtualKey,
+  VirtualKeyCreated,
 } from '@/types'
 
 function getToken(): string | null {
@@ -210,5 +215,56 @@ export async function updateGroupPolicy(groupId: string, policy: NetworkPolicy):
     body: JSON.stringify(policy),
   })
   if (!res.ok) throw new Error('Failed to update group policy')
+  return res.json()
+}
+
+// ── LLM Gateway ─────────────────────────────────────────────────────────────
+
+export async function fetchLLMConfig(): Promise<LLMConfig> {
+  const res = await apiFetch(`${apiBase()}/api/llmgw/config`)
+  if (!res.ok) throw new Error('Failed to fetch LLM config')
+  return res.json()
+}
+
+export async function updateLLMConfig(body: LLMConfigUpdate): Promise<LLMConfig> {
+  const res = await apiFetch(`${apiBase()}/api/llmgw/config`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail ?? 'Failed to update LLM config')
+  }
+  return res.json()
+}
+
+export async function fetchVirtualKeys(): Promise<VirtualKey[]> {
+  const res = await apiFetch(`${apiBase()}/api/llmgw/keys`)
+  if (!res.ok) throw new Error('Failed to fetch virtual keys')
+  return res.json()
+}
+
+export async function createVirtualKey(label: string | null): Promise<VirtualKeyCreated> {
+  const res = await apiFetch(`${apiBase()}/api/llmgw/keys`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail ?? 'Failed to create key')
+  }
+  return res.json()
+}
+
+export async function revokeVirtualKey(keyId: string): Promise<void> {
+  const res = await apiFetch(`${apiBase()}/api/llmgw/keys/${keyId}`, { method: 'DELETE' })
+  if (!res.ok && res.status !== 204) throw new Error('Failed to revoke key')
+}
+
+export async function fetchTokenUsage(): Promise<TokenUsage[]> {
+  const res = await apiFetch(`${apiBase()}/api/llmgw/usage`)
+  if (!res.ok) throw new Error('Failed to fetch token usage')
   return res.json()
 }

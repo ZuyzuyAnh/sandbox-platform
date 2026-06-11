@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
+import { ThemeToggle } from '@/lib/theme'
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -25,42 +26,75 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0F172A]">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-app relative overflow-hidden">
+      {/* Decorative grid backdrop */}
+      <div
+        aria-hidden
+        className="absolute inset-0 opacity-[0.04] pointer-events-none"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgb(var(--fg)) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--fg)) 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
+        }}
+      />
+      {/* Accent glow */}
+      <div
+        aria-hidden
+        className="absolute -top-32 left-1/2 -translate-x-1/2 w-[560px] h-[280px] rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse, rgb(var(--accent) / 0.14), transparent 65%)' }}
+      />
+
+      <div className="absolute top-5 right-5">
+        <ThemeToggle />
+      </div>
+
+      <div className="w-full max-w-sm relative animate-rise">
+        {/* Brand */}
         <div className="text-center mb-8">
-          <span className="text-lg font-semibold font-mono text-[#F8FAFC]">Flezi sandbox</span>
-          <p className="text-sm text-[#475569] mt-1">Sign in to your account</p>
+          <div className="inline-flex items-center gap-2.5 mb-3">
+            <span className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path d="M3 13.5L9 3l6 10.5H3z" stroke="rgb(var(--accent-fg))" strokeWidth="1.8" strokeLinejoin="round" />
+              </svg>
+            </span>
+            <span className="text-xl font-semibold font-display tracking-tight">Flezi sandbox</span>
+          </div>
+          <p className="text-sm text-fg-subtle">Sign in to your workspace</p>
         </div>
 
-        <div className="bg-[#1E293B] border border-[#334155] rounded-xl p-6">
+        <div className="bg-surface border border-line rounded-2xl p-6 shadow-xl shadow-black/5">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div>
-              <label className="block text-xs font-medium text-[#94A3B8] mb-1.5">Email</label>
+              <label htmlFor="email" className="block text-xs font-medium text-fg-muted mb-1.5">Email</label>
               <input
+                id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoFocus
-                className="w-full px-3 py-2 rounded-lg bg-[#0F172A] border border-[#334155] text-[#F8FAFC] text-sm placeholder:text-[#475569] focus:outline-none focus:border-[#22C55E] transition-colors"
+                autoComplete="email"
+                className="w-full px-3 py-2.5 rounded-lg bg-app border border-line text-fg text-sm placeholder:text-fg-subtle focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
                 placeholder="you@example.com"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-[#94A3B8] mb-1.5">Password</label>
+              <label htmlFor="password" className="block text-xs font-medium text-fg-muted mb-1.5">Password</label>
               <input
+                id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full px-3 py-2 rounded-lg bg-[#0F172A] border border-[#334155] text-[#F8FAFC] text-sm placeholder:text-[#475569] focus:outline-none focus:border-[#22C55E] transition-colors"
+                autoComplete="current-password"
+                className="w-full px-3 py-2.5 rounded-lg bg-app border border-line text-fg text-sm placeholder:text-fg-subtle focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
                 placeholder="••••••••"
               />
             </div>
 
             {error && (
-              <p className="text-xs text-[#EF4444] bg-[rgba(239,68,68,0.1)] border border-[rgba(239,68,68,0.2)] rounded-lg px-3 py-2">
+              <p role="alert" className="text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2 animate-fade-in">
                 {error}
               </p>
             )}
@@ -68,7 +102,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 px-4 bg-[#22C55E] text-[#0F172A] text-sm font-medium rounded-lg hover:bg-[#16A34A] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer mt-1"
+              className="w-full py-2.5 px-4 bg-accent text-accent-fg text-sm font-semibold rounded-lg hover:bg-accent-hover active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer mt-1"
             >
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
