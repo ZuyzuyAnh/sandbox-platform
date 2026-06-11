@@ -13,31 +13,22 @@ function formatExpiry(expiresAt: string): string {
   return `${m}m ${s < 10 ? '0' : ''}${s}s`
 }
 
-function SessionRow({
-  session,
-  onTerminate,
-}: {
-  session: Session
-  onTerminate: (id: string) => Promise<void>
-}) {
+function SessionRow({ session, onTerminate }: { session: Session; onTerminate: (id: string) => Promise<void> }) {
   const [terminating, setTerminating] = useState(false)
   const expired = new Date(session.expires_at).getTime() <= Date.now()
 
   async function handleTerminate() {
     setTerminating(true)
-    try {
-      await onTerminate(session.sandbox_id)
-    } finally {
-      setTerminating(false)
-    }
+    try { await onTerminate(session.sandbox_id) }
+    finally { setTerminating(false) }
   }
 
   return (
-    <tr className="border-b border-gray-100 last:border-0">
-      <td className={`py-2 pr-4 font-mono text-xs ${expired ? 'text-gray-400' : 'text-gray-600'}`}>
+    <tr className="border-b border-[#1E293B] last:border-0">
+      <td className={`py-2 pr-4 font-mono text-xs ${expired ? 'text-[#475569]' : 'text-[#94A3B8]'}`}>
         {session.sandbox_id.slice(0, 8)}
       </td>
-      <td className={`py-2 pr-4 text-xs ${expired ? 'text-gray-400' : 'text-gray-500'}`}>
+      <td className={`py-2 pr-4 font-mono text-xs ${expired ? 'text-[#475569]' : 'text-[#64748B]'}`}>
         {formatExpiry(session.expires_at)}
       </td>
       <td className="py-2 pr-2">
@@ -46,7 +37,7 @@ function SessionRow({
             href={session.session_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-3 py-1 text-xs rounded-md bg-violet-600 text-white hover:bg-violet-700 transition-colors"
+            className="px-2.5 py-1 text-xs rounded-md bg-[rgba(168,85,247,0.15)] text-[#A855F7] hover:bg-[rgba(168,85,247,0.25)] transition-colors"
           >
             Open
           </a>
@@ -56,9 +47,9 @@ function SessionRow({
         <button
           onClick={handleTerminate}
           disabled={terminating}
-          className="px-3 py-1 text-xs rounded-md bg-gray-100 text-gray-600 hover:bg-red-100 hover:text-red-700 disabled:opacity-50 transition-colors"
+          className="px-2.5 py-1 text-xs rounded-md bg-[#334155] text-[#64748B] hover:bg-[rgba(239,68,68,0.15)] hover:text-[#EF4444] disabled:opacity-50 transition-colors cursor-pointer"
         >
-          {terminating ? '…' : '✕'}
+          {terminating ? '...' : '✕'}
         </button>
       </td>
     </tr>
@@ -77,21 +68,21 @@ export default function ActiveSessions() {
 
   return (
     <div className="flex flex-col">
-      <h2 className="text-sm font-semibold text-gray-700 mb-2">
+      <h2 className="text-xs font-semibold text-[#94A3B8] uppercase tracking-widest mb-2">
         Active VS Code sessions
         {sessions.length > 0 && (
-          <span className="ml-2 text-xs font-normal text-gray-400">({sessions.length})</span>
+          <span className="ml-2 text-[#475569] normal-case tracking-normal">({sessions.length})</span>
         )}
       </h2>
       {isLoading ? (
-        <div className="text-xs text-gray-400 animate-pulse">Loading sessions…</div>
+        <div className="text-xs text-[#475569] animate-pulse">Loading sessions...</div>
       ) : (
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
-              <th className="pb-1 font-medium">Session</th>
-              <th className="pb-1 font-medium">Expires</th>
-              <th className="pb-1 font-medium" colSpan={2}>Actions</th>
+            <tr className="text-left text-xs text-[#475569] border-b border-[#334155]">
+              <th className="pb-1.5 font-medium">Session</th>
+              <th className="pb-1.5 font-medium">Expires</th>
+              <th className="pb-1.5 font-medium" colSpan={2}>Actions</th>
             </tr>
           </thead>
           <tbody>

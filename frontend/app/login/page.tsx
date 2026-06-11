@@ -25,51 +25,55 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-full max-w-sm bg-white rounded-xl border border-gray-200 shadow-sm p-8">
-        <h1 className="text-xl font-semibold text-gray-900 mb-1">Flezi sandbox</h1>
-        <p className="text-sm text-gray-500 mb-6">Sign in to your account</p>
+    <div className="min-h-screen flex items-center justify-center bg-[#0F172A]">
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-8">
+          <span className="text-lg font-semibold font-mono text-[#F8FAFC]">Flezi sandbox</span>
+          <p className="text-sm text-[#475569] mt-1">Sign in to your account</p>
+        </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoFocus
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-              placeholder="you@example.com"
-            />
-          </div>
+        <div className="bg-[#1E293B] border border-[#334155] rounded-xl p-6">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div>
+              <label className="block text-xs font-medium text-[#94A3B8] mb-1.5">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoFocus
+                className="w-full px-3 py-2 rounded-lg bg-[#0F172A] border border-[#334155] text-[#F8FAFC] text-sm placeholder:text-[#475569] focus:outline-none focus:border-[#22C55E] transition-colors"
+                placeholder="you@example.com"
+              />
+            </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-              placeholder="••••••••"
-            />
-          </div>
+            <div>
+              <label className="block text-xs font-medium text-[#94A3B8] mb-1.5">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full px-3 py-2 rounded-lg bg-[#0F172A] border border-[#334155] text-[#F8FAFC] text-sm placeholder:text-[#475569] focus:outline-none focus:border-[#22C55E] transition-colors"
+                placeholder="••••••••"
+              />
+            </div>
 
-          {error && (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
-              {error}
-            </p>
-          )}
+            {error && (
+              <p className="text-xs text-[#EF4444] bg-[rgba(239,68,68,0.1)] border border-[rgba(239,68,68,0.2)] rounded-lg px-3 py-2">
+                {error}
+              </p>
+            )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2 px-4 bg-emerald-600 text-white text-sm font-medium rounded-md hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {loading ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2.5 px-4 bg-[#22C55E] text-[#0F172A] text-sm font-medium rounded-lg hover:bg-[#16A34A] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer mt-1"
+            >
+              {loading ? 'Signing in...' : 'Sign in'}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   )

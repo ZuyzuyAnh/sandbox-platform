@@ -1,3 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --color-bg: #0F172A;
+  --color-surface: #1E293B;
+  --color-surface-2: #272F42;
+  --color-border: #334155;
+  --color-border-subtle: #1E293B;
+  --color-text: #F8FAFC;
+  --color-text-muted: #94A3B8;
+  --color-accent: #22C55E;
+  --color-accent-dim: rgba(34,197,94,0.15);
+  --color-red: #EF4444;
+  --color-red-dim: rgba(239,68,68,0.15);
+  --color-yellow: #F59E0B;
+  --color-blue: #3B82F6;
+  --color-purple: #A855F7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: 'Fira Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* Selection */
+::selection { background: rgba(34,197,94,0.25); }
+
+/* Monospace for code/keys */
+.font-mono { font-family: 'Fira Code', monospace; }

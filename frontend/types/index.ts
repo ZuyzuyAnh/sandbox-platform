@@ -124,3 +124,60 @@ export interface LogLine {
   line: string
   ts: string
 }
+
+// ── Virtual API Keys ────────────────────────────────────────────────────────
+
+export interface VirtualApiKey {
+  id: string
+  name: string
+  key_prefix: string        // e.g. "sk-vk-abc1"
+  user_id: string
+  user_email: string
+  model_access: string[]    // e.g. ["claude-3-5-sonnet", "gpt-4o"]
+  token_limit: number | null
+  tokens_used: number
+  is_active: boolean
+  created_at: string
+  last_used_at: string | null
+}
+
+export interface CreateVirtualApiKeyRequest {
+  name: string
+  user_id: string
+  model_access: string[]
+  token_limit: number | null
+}
+
+// ── AI Usage Analytics ──────────────────────────────────────────────────────
+
+export interface UsageDataPoint {
+  date: string
+  tokens_input: number
+  tokens_output: number
+  requests: number
+  cost_usd: number
+}
+
+export interface UsageByModel {
+  model: string
+  tokens: number
+  requests: number
+  cost_usd: number
+}
+
+export interface UsageByUser {
+  user_email: string
+  tokens: number
+  requests: number
+  cost_usd: number
+}
+
+export interface UsageSummary {
+  total_tokens: number
+  total_requests: number
+  total_cost_usd: number
+  active_keys: number
+  daily: UsageDataPoint[]
+  by_model: UsageByModel[]
+  by_user: UsageByUser[]
+}

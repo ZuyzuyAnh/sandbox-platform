@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import ActiveSessions from '@/components/ActiveSessions'
 import AdminGroupsPanel from '@/components/AdminGroupsPanel'
 import AdminUserPanel from '@/components/AdminUserPanel'
@@ -24,29 +25,40 @@ export default function Home() {
       <PolicyChangeNotification />
 
       {/* Topbar */}
-      <header className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200 flex-shrink-0">
-        <span className="text-base font-semibold text-gray-900">Flezi sandbox</span>
-        <div className="flex items-center gap-3">
+      <header className="flex items-center justify-between px-6 py-3 bg-[#0F172A] border-b border-[#1E293B] flex-shrink-0">
+        <span className="text-sm font-semibold text-[#F8FAFC] font-mono">Flezi sandbox</span>
+        <div className="flex items-center gap-2">
           {isAdmin && (
             <>
               <button
                 onClick={() => { setUserPanelOpen(true); setGroupsPanelOpen(false) }}
-                className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors"
+                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-[#334155] text-[#94A3B8] hover:bg-[#1E293B] hover:text-[#F8FAFC] transition-colors cursor-pointer"
               >
                 Users
               </button>
               <button
                 onClick={() => { setGroupsPanelOpen(true); setUserPanelOpen(false) }}
-                className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors"
+                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-[#334155] text-[#94A3B8] hover:bg-[#1E293B] hover:text-[#F8FAFC] transition-colors cursor-pointer"
               >
                 Groups
               </button>
+              <Link
+                href="/admin/api-keys"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-[rgba(34,197,94,0.1)] text-[#22C55E] border border-[#22C55E]/20 hover:bg-[rgba(34,197,94,0.2)] transition-colors"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <circle cx="4.5" cy="5.5" r="3" stroke="currentColor" strokeWidth="1.2"/>
+                  <path d="M7 7.5l3.5 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+                AI Admin
+              </Link>
             </>
           )}
-          <span className="text-xs text-gray-400">{user?.email}</span>
+          <div className="w-px h-4 bg-[#334155] mx-1" />
+          <span className="text-xs text-[#475569]">{user?.email}</span>
           <button
             onClick={logout}
-            className="px-3 py-1.5 text-xs font-medium rounded-md text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+            className="px-3 py-1.5 text-xs font-medium rounded-lg text-[#64748B] hover:text-[#EF4444] hover:bg-[rgba(239,68,68,0.1)] transition-colors cursor-pointer"
           >
             Sign out
           </button>
@@ -65,12 +77,12 @@ export default function Home() {
           </section>
 
           <section className="flex flex-1 overflow-hidden px-6 min-h-0">
-            <div className="flex-1 overflow-hidden bg-white rounded-lg border border-gray-200 p-4 flex flex-col">
+            <div className="flex-1 overflow-hidden bg-[#1E293B] rounded-xl border border-[#334155] p-4 flex flex-col">
               <TaskTable onSelect={() => {}} selectedId={null} />
             </div>
           </section>
 
-          <footer className="flex-shrink-0 border-t border-gray-200 bg-white px-6 py-3 flex flex-col gap-4">
+          <footer className="flex-shrink-0 border-t border-[#1E293B] bg-[#0F172A] px-6 py-4 flex flex-col gap-4">
             <AdminUsersOnline />
             <ActiveSessions />
             <SpawnPanel />
