@@ -30,3 +30,9 @@ async def init_db() -> None:
         await conn.execute(
             text("ALTER TABLE vscode_sessions ADD COLUMN IF NOT EXISTS user_id VARCHAR")
         )
+        await conn.execute(
+            text("ALTER TABLE users ADD COLUMN IF NOT EXISTS token_limit INTEGER")
+        )
+        await conn.execute(
+            text("ALTER TABLE users ADD COLUMN IF NOT EXISTS token_limit_window_minutes INTEGER")
+        )

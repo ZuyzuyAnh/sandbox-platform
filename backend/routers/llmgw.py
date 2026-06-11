@@ -28,6 +28,7 @@ from models.llm_config import LLMConfig
 from models.token_usage import TokenUsage
 from models.user import User
 from models.virtual_key import VirtualKey
+from redis_client import get_redis
 from services import llmgw_service
 
 logger = logging.getLogger(__name__)
@@ -258,6 +259,15 @@ async def proxy_messages(
 
     body = await request.json()
 
+    redis = await get_redis()
+    remaining = await llmgw_service.check_rate_limit(vk.user_id, db, redis)
+    if remaining is not None and remaining <= 0:
+        return StreamingResponse(
+            llmgw_service.no_tokens_sse_stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     try:
         stream = await llmgw_service.proxy(
             body=body,
@@ -265,6 +275,7 @@ async def proxy_messages(
             virtual_key_id=vk.id,
             session_id=x_session_id,
             config=config,
+            redis=redis,
         )
     except Exception as e:
         logger.exception("LLM proxy error")
