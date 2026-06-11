@@ -23,6 +23,8 @@ class CreateUserRequest(BaseModel):
 class PatchUserRequest(BaseModel):
     role: str | None = None
     is_active: bool | None = None
+    token_limit: int | None = None
+    token_limit_window_minutes: int | None = None
 
 
 class UserResponse(BaseModel):
@@ -31,6 +33,8 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
     groups: list[str]
+    token_limit: int | None
+    token_limit_window_minutes: int | None
 
 
 async def _user_with_groups(user: User, db: AsyncSession) -> UserResponse:
@@ -46,6 +50,8 @@ async def _user_with_groups(user: User, db: AsyncSession) -> UserResponse:
         role=user.role,
         is_active=user.is_active,
         groups=group_names,
+        token_limit=user.token_limit,
+        token_limit_window_minutes=user.token_limit_window_minutes,
     )
 
 
@@ -109,6 +115,10 @@ async def patch_user(
         user.role = req.role
     if req.is_active is not None:
         user.is_active = req.is_active
+    if "token_limit" in req.model_fields_set:
+        user.token_limit = req.token_limit
+    if "token_limit_window_minutes" in req.model_fields_set:
+        user.token_limit_window_minutes = req.token_limit_window_minutes
 
     await db.commit()
     await db.refresh(user)

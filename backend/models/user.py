@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Boolean, DateTime, func
+from sqlalchemy import Boolean, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -18,3 +18,6 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # Token rate limit — NULL = unlimited (no Redis key created). window NULL = unlimited.
+    token_limit: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    token_limit_window_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)

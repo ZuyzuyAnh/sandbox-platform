@@ -8,12 +8,14 @@ import uuid
 from collections.abc import AsyncGenerator
 
 import litellm
+from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import AsyncSessionLocal
 from models.llm_config import LLMConfig
 from models.token_usage import TokenUsage
+from models.user import User
 from models.virtual_key import VirtualKey
 
 logger = logging.getLogger(__name__)
@@ -52,6 +54,91 @@ async def authenticate_virtual_key(raw_key: str, db: AsyncSession) -> VirtualKey
         select(VirtualKey).where(VirtualKey.key_hash == key_hash, VirtualKey.is_active == True)
     )
     return result.scalar_one_or_none()
+
+
+# ---------------------------------------------------------------------------
+# Token rate limiting
+# ---------------------------------------------------------------------------
+
+def _rate_key(user_id: str) -> str:
+    return f"ratelimit:{user_id}"
+
+
+async def check_rate_limit(user_id: str, db: AsyncSession, redis: Redis) -> int | None:
+    """
+    Returns remaining tokens if limited, or None if unlimited.
+    Raises RateLimitExceeded if the user is out of tokens.
+    When the Redis key is absent (window expired), refills from DB.
+    """
+    key = _rate_key(user_id)
+    remaining = await redis.get(key)
+
+    if remaining is not None:
+        return int(remaining)
+
+    # No Redis key — window expired or first request. Check DB limit.
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user or user.token_limit is None or user.token_limit_window_minutes is None:
+        return None  # Unlimited
+
+    # Refill: set remaining = full limit, TTL = window. Actual decrement happens after stream.
+    ttl = user.token_limit_window_minutes * 60
+    await redis.set(key, user.token_limit, ex=ttl)
+    return user.token_limit
+
+
+async def decrement_rate_limit(user_id: str, tokens_used: int, db: AsyncSession, redis: Redis) -> None:
+    """Decrement remaining tokens after a successful stream. Clamp at 0."""
+    key = _rate_key(user_id)
+    remaining = await redis.get(key)
+    if remaining is None:
+        return  # Window expired mid-stream or user is unlimited — nothing to do
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user or user.token_limit is None or user.token_limit_window_minutes is None:
+        return  # Became unlimited — nothing to do
+
+    new_remaining = max(0, int(remaining) - tokens_used)
+    ttl = await redis.ttl(key)
+    if ttl > 0:
+        await redis.set(key, new_remaining, ex=ttl)
+    else:
+        await redis.set(key, new_remaining, ex=user.token_limit_window_minutes * 60)
+
+
+def no_tokens_sse_stream() -> AsyncGenerator[str, None]:
+    """Inject a synthetic Anthropic SSE response telling the user their limit is exhausted."""
+    async def _gen():
+        message_id = f"msg_{uuid.uuid4().hex[:24]}"
+        text = "You have exhausted your token quota for this window. Please contact your administrator."
+        yield _sse("message_start", {
+            "type": "message_start",
+            "message": {
+                "id": message_id, "type": "message", "role": "assistant",
+                "content": [], "model": "rate-limited",
+                "stop_reason": None, "stop_sequence": None,
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+            },
+        })
+        yield _sse("ping", {"type": "ping"})
+        yield _sse("content_block_start", {
+            "type": "content_block_start", "index": 0,
+            "content_block": {"type": "text", "text": ""},
+        })
+        yield _sse("content_block_delta", {
+            "type": "content_block_delta", "index": 0,
+            "delta": {"type": "text_delta", "text": text},
+        })
+        yield _sse("content_block_stop", {"type": "content_block_stop", "index": 0})
+        yield _sse("message_delta", {
+            "type": "message_delta",
+            "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+            "usage": {"output_tokens": 0},
+        })
+        yield _sse("message_stop", {"type": "message_stop"})
+    return _gen()
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +251,7 @@ async def stream_as_anthropic(
     user_id: str,
     virtual_key_id: str,
     session_id: str | None,
+    redis: Redis | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Convert a LiteLLM streaming response to Anthropic SSE format and record usage.
@@ -282,6 +370,11 @@ async def stream_as_anthropic(
 
     await _record_usage(user_id, virtual_key_id, session_id, model, input_tokens, output_tokens)
 
+    if redis is not None:
+        total_tokens = input_tokens + output_tokens
+        async with AsyncSessionLocal() as db:
+            await decrement_rate_limit(user_id, total_tokens, db, redis)
+
     yield _sse("message_stop", {"type": "message_stop"})
 
 
@@ -318,6 +411,7 @@ async def proxy(
     virtual_key_id: str,
     session_id: str | None,
     config: LLMConfig,
+    redis: Redis | None = None,
 ) -> AsyncGenerator[str, None]:
     """Translate Anthropic-format body, call LiteLLM, stream back as Anthropic SSE."""
     messages = _to_openai_messages(body)
@@ -352,4 +446,5 @@ async def proxy(
         user_id=user_id,
         virtual_key_id=virtual_key_id,
         session_id=session_id,
+        redis=redis,
     )
