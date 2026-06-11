@@ -147,6 +147,21 @@ export interface VirtualKey {
   is_active: boolean
   created_at: string
   user_id: string
+  /** Max total tokens (input + output). null = unlimited */
+  token_limit: number | null
+  tokens_used: number
+  input_tokens: number
+  output_tokens: number
+  request_count: number
+  last_used_at: string | null
+  /** Distinct models requested with this key */
+  models: string[]
+}
+
+export interface VirtualKeyUpdate {
+  label?: string | null
+  token_limit?: number | null
+  is_active?: boolean
 }
 
 /** Returned once at creation — includes the full key. */

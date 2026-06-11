@@ -15,15 +15,26 @@ from models.group import Group, UserGroup
 from models.sandbox import SessionListResponse, SessionResponse
 from models.session import SessionRecord
 from models.user import User
+from models.virtual_key import VirtualKey
 from services.opensandbox_client import (
     VSCODE_PORT,
     create_vscode_sandbox,
     delete_sandbox,
     fetch_logs,
     get_sandbox_endpoint,
+    run_sandbox_command,
     start_code_server,
     wait_for_code_server,
     wait_for_ready,
+)
+
+# Installed in every VS Code sandbox so `claude` works out of the box.
+# The vscode image has no node/npm, so use the native installer (standalone
+# binary into ~/.local/bin), then make sure interactive shells see it.
+CLAUDE_CODE_INSTALL_CMD = (
+    "curl -fsSL https://claude.ai/install.sh | bash && "
+    'grep -qs ".local/bin" "$HOME/.bashrc" || '
+    "echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> \"$HOME/.bashrc\""
 )
 
 logger = logging.getLogger(__name__)
@@ -58,9 +69,26 @@ async def create_session(
 ):
     network_policy = await _merge_user_policies(current_user.id, db) if settings.enable_network_policy else None
 
-    sandbox_env = {}
-    if settings.sandbox_anthropic_base_url:
-        sandbox_env["ANTHROPIC_BASE_URL"] = settings.sandbox_anthropic_base_url
+    # Auto-create a virtual key for this session so Claude Code inside the
+    # sandbox authenticates against the LLM gateway with zero setup.
+    raw_key, key_hash, key_prefix = VirtualKey.generate()
+    vk = VirtualKey(
+        user_id=current_user.id,
+        key_hash=key_hash,
+        key_prefix=key_prefix,
+        label="vscode-session",
+    )
+    db.add(vk)
+    await db.flush()
+
+    gateway_base_url = (
+        settings.sandbox_anthropic_base_url
+        or "http://host.docker.internal:8000/api/llmgw"
+    )
+    sandbox_env = {
+        "ANTHROPIC_BASE_URL": gateway_base_url,
+        "ANTHROPIC_AUTH_TOKEN": raw_key,
+    }
 
     try:
         result = await create_vscode_sandbox(
@@ -92,6 +120,13 @@ async def create_session(
     logger.info("[%s] Sandbox running, starting code-server...", sandbox_id)
     try:
         await start_code_server(sandbox_id)
+        # Best-effort: install Claude Code CLI in the background so it's ready
+        # in the integrated terminal. Session creation never fails on this.
+        try:
+            await run_sandbox_command(sandbox_id, CLAUDE_CODE_INSTALL_CMD)
+            logger.info("[%s] Claude Code install started in background", sandbox_id)
+        except Exception as e:
+            logger.warning("[%s] Claude Code install failed (non-fatal): %s", sandbox_id, e)
         logger.info("[%s] code-server started, waiting for HTTP...", sandbox_id)
         await wait_for_code_server(sandbox_id, timeout_seconds=60)
     except TimeoutError:
@@ -111,6 +146,7 @@ async def create_session(
 
     now = datetime.now(timezone.utc)
     expires = now + timedelta(seconds=settings.session_ttl_seconds)
+    vk.label = f"session-{sandbox_id[:12]}"
     record = SessionRecord(
         id=sandbox_id,
         session_url=session_url,
@@ -118,6 +154,7 @@ async def create_session(
         created_at=now,
         expires_at=expires,
         user_id=current_user.id,
+        virtual_key_id=vk.id,
     )
     db.add(record)
     await db.commit()
@@ -136,11 +173,12 @@ async def list_sessions(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    now = datetime.now(timezone.utc)
     if current_user.role == "admin":
         query = (
             select(SessionRecord, User)
             .join(User, User.id == SessionRecord.user_id, isouter=True)
-            .where(SessionRecord.status == "active")
+            .where(SessionRecord.status == "active", SessionRecord.expires_at > now)
             .order_by(SessionRecord.created_at.desc())
         )
         result = await db.execute(query)
@@ -159,7 +197,11 @@ async def list_sessions(
     else:
         query = (
             select(SessionRecord)
-            .where(SessionRecord.status == "active", SessionRecord.user_id == current_user.id)
+            .where(
+                SessionRecord.status == "active",
+                SessionRecord.user_id == current_user.id,
+                SessionRecord.expires_at > now,
+            )
             .order_by(SessionRecord.created_at.desc())
         )
         result = await db.execute(query)
@@ -194,6 +236,16 @@ async def terminate_session(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your session")
 
     record.status = "terminated"
+
+    # Revoke the session's auto-created virtual key
+    if record.virtual_key_id:
+        vk_result = await db.execute(
+            select(VirtualKey).where(VirtualKey.id == record.virtual_key_id)
+        )
+        vk = vk_result.scalar_one_or_none()
+        if vk:
+            vk.is_active = False
+
     await db.commit()
 
     try:

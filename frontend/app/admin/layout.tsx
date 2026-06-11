@@ -46,7 +46,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (user && user.role !== 'admin') {
-      router.replace('/')
+      router.replace('/dashboard')
     }
   }, [user, router])
 
@@ -55,7 +55,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Top nav */}
       <nav className="flex items-center gap-1 px-6 h-14 border-b border-line bg-app flex-shrink-0">
         <Link
-          href="/"
+          href="/dashboard"
           className="flex items-center gap-1.5 text-xs text-fg-subtle hover:text-fg-muted transition-colors mr-3 cursor-pointer"
         >
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">

@@ -15,7 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
-      <body className="bg-app text-fg antialiased h-screen overflow-hidden">
+      <body className="bg-app text-fg antialiased min-h-screen">
         <ThemeProvider>
           <AuthProvider>
             {children}

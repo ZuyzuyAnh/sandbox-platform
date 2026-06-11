@@ -5,7 +5,7 @@ import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { fetchTokenUsage, fetchUsers, fetchVirtualKeys } from '@/lib/api'
+import { downloadUsageReport, fetchTokenUsage, fetchUsers, fetchVirtualKeys } from '@/lib/api'
 import { useChartColors } from '@/lib/theme'
 import type { TokenUsage, VirtualKey } from '@/types'
 
@@ -79,7 +79,25 @@ export default function UsagePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [range, setRange] = useState<Range>('30d')
+  const [exporting, setExporting] = useState(false)
   const colors = useChartColors()
+
+  async function exportPNG() {
+    setExporting(true)
+    try {
+      const blob = await downloadUsageReport(RANGE_DAYS[range])
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `usage-report-${new Date().toISOString().slice(0, 10)}.png`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to export report')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   useEffect(() => {
     Promise.all([
@@ -190,14 +208,27 @@ export default function UsagePage() {
           <h1 className="text-xl font-semibold font-display tracking-tight mb-1">Usage analytics</h1>
           <p className="text-sm text-fg-subtle">Token consumption across the gateway. One record per proxied message.</p>
         </div>
-        <button
-          onClick={() => exportCSV(rows)}
-          disabled={rows.length === 0}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface border border-line text-sm text-fg-muted hover:text-fg hover:border-fg-subtle/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
-        >
-          <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M2 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          Export CSV
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => exportCSV(rows)}
+            disabled={rows.length === 0}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface border border-line text-sm text-fg-muted hover:text-fg hover:border-fg-subtle/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          >
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M2 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            Export CSV
+          </button>
+          <button
+            onClick={exportPNG}
+            disabled={exporting || rows.length === 0}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent/10 border border-accent/20 text-sm font-medium text-accent hover:bg-accent/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          >
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+              <rect x="1.5" y="1.5" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M1.5 9.5L5 6l3 3 4.5-4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {exporting ? 'Rendering...' : 'Export PNG report'}
+          </button>
+        </div>
       </div>
 
       {error && (

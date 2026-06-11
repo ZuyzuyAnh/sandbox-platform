@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { fetchLLMConfig, updateLLMConfig } from '@/lib/api'
 
 const PROVIDERS = [
@@ -53,7 +54,6 @@ export default function GatewayConfigPage() {
       setConfigured(Boolean(cfg.endpoint_url))
       setApiKey('')
       setSaved(true)
-      setTimeout(() => setSaved(false), 4000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save config')
     } finally {
@@ -88,6 +88,45 @@ export default function GatewayConfigPage() {
           {configured ? 'Configured' : 'Not configured'}
         </span>
       </div>
+
+      {/* Success panel — tells the admin what to do next */}
+      {saved && (
+        <div className="mb-6 bg-ok/10 border border-ok/25 rounded-2xl p-5 animate-rise">
+          <div className="flex items-start gap-3">
+            <span className="w-8 h-8 rounded-full bg-ok/15 flex items-center justify-center flex-shrink-0">
+              <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M4 10.5L8 14.5 16 6" stroke="rgb(var(--ok))" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </span>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-fg mb-1">Gateway configured</h3>
+              <p className="text-xs text-fg-muted mb-3">
+                Requests through virtual keys now proxy to <span className="font-mono text-fg">{provider}/{modelName}</span>. Next steps:
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href="/admin/api-keys"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-accent text-accent-fg text-xs font-semibold hover:bg-accent-hover active:scale-[0.98] transition-all"
+                >
+                  Create API keys
+                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 6h8M7 3l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </Link>
+                <Link
+                  href="/dashboard"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-line text-xs font-medium text-fg-muted hover:text-fg hover:bg-raised transition-colors"
+                >
+                  Spawn a sandbox
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setSaved(false)}
+                  className="px-3 py-2 text-xs text-fg-subtle hover:text-fg-muted transition-colors cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSave} className="bg-surface border border-line rounded-2xl overflow-hidden">
         <div className="p-6 flex flex-col gap-5">
@@ -201,12 +240,6 @@ export default function GatewayConfigPage() {
             Sandboxes authenticate with virtual keys, never this key.
           </p>
           <div className="flex items-center gap-3">
-            {saved && (
-              <span className="flex items-center gap-1.5 text-xs text-ok animate-fade-in">
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6.5L4.5 9 10 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                Saved
-              </span>
-            )}
             <button
               type="submit"
               disabled={saving}

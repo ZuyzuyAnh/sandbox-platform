@@ -18,6 +18,7 @@ import {
   UserRecord,
   VirtualKey,
   VirtualKeyCreated,
+  VirtualKeyUpdate,
 } from '@/types'
 
 function getToken(): string | null {
@@ -245,11 +246,11 @@ export async function fetchVirtualKeys(): Promise<VirtualKey[]> {
   return res.json()
 }
 
-export async function createVirtualKey(label: string | null): Promise<VirtualKeyCreated> {
+export async function createVirtualKey(label: string | null, tokenLimit: number | null = null): Promise<VirtualKeyCreated> {
   const res = await apiFetch(`${apiBase()}/api/llmgw/keys`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ label }),
+    body: JSON.stringify({ label, token_limit: tokenLimit }),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
@@ -258,9 +259,29 @@ export async function createVirtualKey(label: string | null): Promise<VirtualKey
   return res.json()
 }
 
-export async function revokeVirtualKey(keyId: string): Promise<void> {
+export async function updateVirtualKey(keyId: string, data: VirtualKeyUpdate): Promise<VirtualKey> {
+  const res = await apiFetch(`${apiBase()}/api/llmgw/keys/${keyId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail ?? 'Failed to update key')
+  }
+  return res.json()
+}
+
+/** Permanently deletes the key. Use updateVirtualKey({is_active:false}) to revoke instead. */
+export async function deleteVirtualKey(keyId: string): Promise<void> {
   const res = await apiFetch(`${apiBase()}/api/llmgw/keys/${keyId}`, { method: 'DELETE' })
-  if (!res.ok && res.status !== 204) throw new Error('Failed to revoke key')
+  if (!res.ok && res.status !== 204) throw new Error('Failed to delete key')
+}
+
+export async function downloadUsageReport(days: number): Promise<Blob> {
+  const res = await apiFetch(`${apiBase()}/api/llmgw/usage/report?days=${days}`)
+  if (!res.ok) throw new Error('Failed to generate report')
+  return res.blob()
 }
 
 export async function fetchTokenUsage(): Promise<TokenUsage[]> {

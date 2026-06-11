@@ -1,7 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { createVirtualKey, fetchUsers, fetchVirtualKeys, revokeVirtualKey } from '@/lib/api'
+import {
+  createVirtualKey,
+  deleteVirtualKey,
+  fetchUsers,
+  fetchVirtualKeys,
+  updateVirtualKey,
+} from '@/lib/api'
 import type { VirtualKey, VirtualKeyCreated } from '@/types'
 
 function timeAgo(iso: string): string {
@@ -14,10 +20,17 @@ function timeAgo(iso: string): string {
   return `${Math.floor(h / 24)}d ago`
 }
 
+function fmt(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return String(n)
+}
+
 // ── Create modal ─────────────────────────────────────────────────────────────
 
 function CreateKeyModal({ onClose, onCreated }: { onClose: () => void; onCreated: (k: VirtualKeyCreated) => void }) {
   const [label, setLabel] = useState('')
+  const [limit, setLimit] = useState('')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -26,7 +39,8 @@ function CreateKeyModal({ onClose, onCreated }: { onClose: () => void; onCreated
     setCreating(true)
     setError(null)
     try {
-      const created = await createVirtualKey(label.trim() || null)
+      const tokenLimit = limit.trim() ? Number(limit) : null
+      const created = await createVirtualKey(label.trim() || null, tokenLimit)
       onCreated(created)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create key')
@@ -43,18 +57,32 @@ function CreateKeyModal({ onClose, onCreated }: { onClose: () => void; onCreated
           <p className="text-xs text-fg-subtle mt-0.5">Used by Claude Code inside sandboxes to reach the gateway.</p>
         </div>
 
-        <div className="px-6 py-5">
-          <label htmlFor="label" className="block text-xs font-medium text-fg-muted mb-1.5">Label <span className="text-fg-subtle">(optional)</span></label>
-          <input
-            id="label"
-            value={label}
-            onChange={e => setLabel(e.target.value)}
-            autoFocus
-            placeholder="e.g. CI pipeline"
-            className="w-full px-3 py-2.5 rounded-lg bg-app border border-line text-fg text-sm placeholder:text-fg-subtle focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
-          />
+        <div className="px-6 py-5 flex flex-col gap-4">
+          <div>
+            <label htmlFor="label" className="block text-xs font-medium text-fg-muted mb-1.5">Label <span className="text-fg-subtle">(optional)</span></label>
+            <input
+              id="label"
+              value={label}
+              onChange={e => setLabel(e.target.value)}
+              autoFocus
+              placeholder="e.g. CI pipeline"
+              className="w-full px-3 py-2.5 rounded-lg bg-app border border-line text-fg text-sm placeholder:text-fg-subtle focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+            />
+          </div>
+          <div>
+            <label htmlFor="limit" className="block text-xs font-medium text-fg-muted mb-1.5">Token limit <span className="text-fg-subtle">(optional)</span></label>
+            <input
+              id="limit"
+              value={limit}
+              onChange={e => setLimit(e.target.value.replace(/[^\d]/g, ''))}
+              inputMode="numeric"
+              placeholder="e.g. 1000000 — empty = unlimited"
+              className="w-full px-3 py-2.5 rounded-lg bg-app border border-line text-fg text-sm font-mono placeholder:text-fg-subtle placeholder:font-sans focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+            />
+            <p className="text-[11px] text-fg-subtle mt-1">Max total tokens (input + output). Requests are rejected once exceeded.</p>
+          </div>
           {error && (
-            <p role="alert" className="mt-3 text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">{error}</p>
+            <p role="alert" className="text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">{error}</p>
           )}
         </div>
 
@@ -71,6 +99,156 @@ function CreateKeyModal({ onClose, onCreated }: { onClose: () => void; onCreated
           </button>
         </div>
       </form>
+    </div>
+  )
+}
+
+// ── Edit modal ───────────────────────────────────────────────────────────────
+
+function EditKeyModal({ vk, onClose, onSaved }: { vk: VirtualKey; onClose: () => void; onSaved: () => void }) {
+  const [label, setLabel] = useState(vk.label ?? '')
+  const [limit, setLimit] = useState(vk.token_limit != null ? String(vk.token_limit) : '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await updateVirtualKey(vk.id, {
+        label: label.trim() || null,
+        token_limit: limit.trim() ? Number(limit) : null,
+      })
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update key')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <form onSubmit={handleSave} className="relative w-full max-w-md bg-surface border border-line rounded-2xl shadow-2xl animate-scale-in">
+        <div className="px-6 py-4 border-b border-line">
+          <h2 className="text-base font-semibold font-display text-fg">Edit key</h2>
+          <p className="text-xs text-fg-subtle mt-0.5 font-mono">{vk.key_prefix}...</p>
+        </div>
+
+        {/* Usage details */}
+        <div className="px-6 py-4 border-b border-line bg-raised/30">
+          <div className="grid grid-cols-4 gap-3 mb-3">
+            {[
+              { label: 'Input', value: fmt(vk.input_tokens) },
+              { label: 'Output', value: fmt(vk.output_tokens) },
+              { label: 'Requests', value: vk.request_count.toLocaleString() },
+              { label: 'Last used', value: vk.last_used_at ? timeAgo(vk.last_used_at) : 'Never' },
+            ].map(({ label, value }) => (
+              <div key={label}>
+                <p className="text-[10px] font-medium text-fg-subtle uppercase tracking-widest mb-0.5">{label}</p>
+                <p className="text-sm font-mono text-fg">{value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] font-medium text-fg-subtle uppercase tracking-widest mr-1">Models</span>
+            {vk.models.length > 0 ? (
+              vk.models.map(m => (
+                <span key={m} className="px-2 py-0.5 rounded-md bg-accent/10 border border-accent/20 text-accent font-mono text-[11px]">{m}</span>
+              ))
+            ) : (
+              <span className="text-xs text-fg-subtle">No requests yet</span>
+            )}
+          </div>
+          <p className="text-[11px] text-fg-subtle mt-3">
+            Created {new Date(vk.created_at).toLocaleString()}
+          </p>
+        </div>
+
+        <div className="px-6 py-5 flex flex-col gap-4">
+          <div>
+            <label htmlFor="edit-label" className="block text-xs font-medium text-fg-muted mb-1.5">Label</label>
+            <input
+              id="edit-label"
+              value={label}
+              onChange={e => setLabel(e.target.value)}
+              autoFocus
+              placeholder="Untitled"
+              className="w-full px-3 py-2.5 rounded-lg bg-app border border-line text-fg text-sm placeholder:text-fg-subtle focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+            />
+          </div>
+          <div>
+            <label htmlFor="edit-limit" className="block text-xs font-medium text-fg-muted mb-1.5">Token limit</label>
+            <input
+              id="edit-limit"
+              value={limit}
+              onChange={e => setLimit(e.target.value.replace(/[^\d]/g, ''))}
+              inputMode="numeric"
+              placeholder="empty = unlimited"
+              className="w-full px-3 py-2.5 rounded-lg bg-app border border-line text-fg text-sm font-mono placeholder:text-fg-subtle placeholder:font-sans focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+            />
+            <p className="text-[11px] text-fg-subtle mt-1">
+              Used so far: <span className="font-mono text-fg-muted">{vk.tokens_used.toLocaleString()}</span> tokens
+            </p>
+          </div>
+          {error && (
+            <p role="alert" className="text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">{error}</p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-line">
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-fg-muted hover:text-fg hover:bg-raised transition-colors cursor-pointer">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm font-semibold bg-accent text-accent-fg hover:bg-accent-hover active:scale-[0.98] disabled:opacity-50 transition-all cursor-pointer"
+          >
+            {saving ? 'Saving...' : 'Save changes'}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+// ── Confirm dialog (revoke / delete) ─────────────────────────────────────────
+
+function ConfirmDialog({
+  vk, mode, onConfirm, onCancel,
+}: {
+  vk: VirtualKey
+  mode: 'revoke' | 'delete'
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const isDelete = mode === 'delete'
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative w-full max-w-sm bg-surface border border-line rounded-2xl shadow-2xl animate-scale-in p-6 text-center">
+        <div className="w-11 h-11 rounded-full bg-danger/15 flex items-center justify-center mx-auto mb-4">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 5.5V10M9 12.5v.5" stroke="rgb(var(--danger))" strokeWidth="1.6" strokeLinecap="round" /><circle cx="9" cy="9" r="7" stroke="rgb(var(--danger))" strokeWidth="1.5" /></svg>
+        </div>
+        <h3 className="text-base font-semibold font-display text-fg mb-2">{isDelete ? 'Delete key' : 'Revoke key'}</h3>
+        <p className="text-sm text-fg-subtle mb-6">
+          <span className="font-mono text-fg-muted">{vk.key_prefix}...</span>
+          {vk.label ? <> ({vk.label})</> : null}{' '}
+          {isDelete
+            ? 'will be permanently removed. Usage history is kept.'
+            : 'will stop working immediately. You can reactivate it later.'}
+        </p>
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 px-4 py-2 rounded-lg text-sm text-fg-muted border border-line hover:bg-raised transition-colors cursor-pointer">
+            Cancel
+          </button>
+          <button onClick={onConfirm} className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold bg-danger text-white hover:opacity-90 active:scale-[0.98] transition-all cursor-pointer">
+            {isDelete ? 'Delete' : 'Revoke'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -138,34 +316,6 @@ function KeyCreatedModal({ created, onClose }: { created: VirtualKeyCreated; onC
   )
 }
 
-// ── Revoke confirm ───────────────────────────────────────────────────────────
-
-function RevokeConfirm({ vk, onConfirm, onCancel }: { vk: VirtualKey; onConfirm: () => void; onCancel: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative w-full max-w-sm bg-surface border border-line rounded-2xl shadow-2xl animate-scale-in p-6 text-center">
-        <div className="w-11 h-11 rounded-full bg-danger/15 flex items-center justify-center mx-auto mb-4">
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 5.5V10M9 12.5v.5" stroke="rgb(var(--danger))" strokeWidth="1.6" strokeLinecap="round" /><circle cx="9" cy="9" r="7" stroke="rgb(var(--danger))" strokeWidth="1.5" /></svg>
-        </div>
-        <h3 className="text-base font-semibold font-display text-fg mb-2">Revoke key</h3>
-        <p className="text-sm text-fg-subtle mb-6">
-          <span className="font-mono text-fg-muted">{vk.key_prefix}...</span>
-          {vk.label ? <> ({vk.label})</> : null} will stop working immediately. This cannot be undone.
-        </p>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 px-4 py-2 rounded-lg text-sm text-fg-muted border border-line hover:bg-raised transition-colors cursor-pointer">
-            Cancel
-          </button>
-          <button onClick={onConfirm} className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold bg-danger text-white hover:opacity-90 active:scale-[0.98] transition-all cursor-pointer">
-            Revoke
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function ApiKeysPage() {
@@ -179,7 +329,8 @@ export default function ApiKeysPage() {
 
   const [createOpen, setCreateOpen] = useState(false)
   const [justCreated, setJustCreated] = useState<VirtualKeyCreated | null>(null)
-  const [revokeTarget, setRevokeTarget] = useState<VirtualKey | null>(null)
+  const [editTarget, setEditTarget] = useState<VirtualKey | null>(null)
+  const [confirmTarget, setConfirmTarget] = useState<{ vk: VirtualKey; mode: 'revoke' | 'delete' } | null>(null)
 
   async function load() {
     try {
@@ -218,14 +369,29 @@ export default function ApiKeysPage() {
     revoked: keys.filter(k => !k.is_active).length,
   }), [keys])
 
-  async function handleRevoke(vk: VirtualKey) {
+  async function handleConfirm() {
+    if (!confirmTarget) return
+    const { vk, mode } = confirmTarget
     try {
-      await revokeVirtualKey(vk.id)
-      setRevokeTarget(null)
+      if (mode === 'delete') {
+        await deleteVirtualKey(vk.id)
+      } else {
+        await updateVirtualKey(vk.id, { is_active: false })
+      }
+      setConfirmTarget(null)
       await load()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to revoke key')
-      setRevokeTarget(null)
+      setError(e instanceof Error ? e.message : 'Action failed')
+      setConfirmTarget(null)
+    }
+  }
+
+  async function handleReactivate(vk: VirtualKey) {
+    try {
+      await updateVirtualKey(vk.id, { is_active: true })
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to reactivate key')
     }
   }
 
@@ -310,40 +476,99 @@ export default function ApiKeysPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line bg-raised/40">
-                {['Label', 'Key', 'Owner', 'Status', 'Created', ''].map(h => (
+                {['Label', 'Key', 'Owner', 'Usage', 'Models', 'Status', 'Last used', ''].map(h => (
                   <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-fg-subtle whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map((k, i) => (
-                <tr key={k.id} className="border-b border-line/50 last:border-0 hover:bg-raised/40 transition-colors animate-fade-in" style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }}>
-                  <td className="px-4 py-3 text-fg text-sm font-medium">{k.label ?? <span className="text-fg-subtle font-normal">Untitled</span>}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-fg-muted">{k.key_prefix}...</td>
-                  <td className="px-4 py-3 text-xs text-fg-muted">{emailByUserId[k.user_id] ?? <span className="font-mono">{k.user_id.slice(0, 8)}</span>}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                      k.is_active ? 'bg-ok/15 text-ok' : 'bg-raised text-fg-subtle'
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${k.is_active ? 'bg-ok' : 'bg-fg-subtle'}`} />
-                      {k.is_active ? 'Active' : 'Revoked'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-fg-subtle whitespace-nowrap" title={new Date(k.created_at).toLocaleString()}>
-                    {timeAgo(k.created_at)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {k.is_active && (
+              {filtered.map((k, i) => {
+                const pct = k.token_limit ? Math.min(100, (k.tokens_used / k.token_limit) * 100) : null
+                return (
+                  <tr key={k.id} className="border-b border-line/50 last:border-0 hover:bg-raised/40 transition-colors animate-fade-in" style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }}>
+                    <td className="px-4 py-3 text-fg text-sm font-medium">{k.label ?? <span className="text-fg-subtle font-normal">Untitled</span>}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-fg-muted">{k.key_prefix}...</td>
+                    <td className="px-4 py-3 text-xs text-fg-muted">{emailByUserId[k.user_id] ?? <span className="font-mono">{k.user_id.slice(0, 8)}</span>}</td>
+                    <td className="px-4 py-3 min-w-[130px]">
+                      <div title={`Input ${k.input_tokens.toLocaleString()} · Output ${k.output_tokens.toLocaleString()}${k.token_limit ? ` · Limit ${k.token_limit.toLocaleString()}` : ' · No limit'}`}>
+                        {k.token_limit ? (
+                          <>
+                            <div className="flex justify-between text-[10px] font-mono text-fg-subtle mb-1">
+                              <span>{fmt(k.tokens_used)}</span>
+                              <span>/ {fmt(k.token_limit)}</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-raised overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${pct! >= 100 ? 'bg-danger' : pct! >= 80 ? 'bg-warn' : 'bg-accent'}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-xs text-fg-subtle font-mono">{fmt(k.tokens_used)} · ∞</span>
+                        )}
+                        <p className="text-[10px] text-fg-subtle mt-1">
+                          {k.request_count.toLocaleString()} req · <span className="font-mono">{fmt(k.input_tokens)}</span> in / <span className="font-mono">{fmt(k.output_tokens)}</span> out
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {k.models.length > 0 ? (
+                        <div className="flex items-center gap-1 flex-wrap max-w-[160px]">
+                          {k.models.slice(0, 2).map(m => (
+                            <span key={m} className="px-1.5 py-0.5 rounded bg-accent/10 border border-accent/20 text-accent font-mono text-[10px] whitespace-nowrap">{m}</span>
+                          ))}
+                          {k.models.length > 2 && (
+                            <span className="text-[10px] text-fg-subtle" title={k.models.slice(2).join(', ')}>+{k.models.length - 2}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-fg-subtle">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                        k.is_active ? 'bg-ok/15 text-ok' : 'bg-raised text-fg-subtle'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${k.is_active ? 'bg-ok' : 'bg-fg-subtle'}`} />
+                        {k.is_active ? 'Active' : 'Revoked'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-fg-subtle whitespace-nowrap" title={`Created ${new Date(k.created_at).toLocaleString()}`}>
+                      {k.last_used_at ? timeAgo(k.last_used_at) : 'Never'}
+                    </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
                       <button
-                        onClick={() => setRevokeTarget(k)}
+                        onClick={() => setEditTarget(k)}
+                        className="px-2.5 py-1 text-xs font-medium rounded-md text-fg-subtle hover:text-fg hover:bg-raised transition-colors cursor-pointer"
+                      >
+                        Edit
+                      </button>
+                      {k.is_active ? (
+                        <button
+                          onClick={() => setConfirmTarget({ vk: k, mode: 'revoke' })}
+                          className="px-2.5 py-1 text-xs font-medium rounded-md text-fg-subtle hover:text-warn hover:bg-warn/10 transition-colors cursor-pointer"
+                        >
+                          Revoke
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleReactivate(k)}
+                          className="px-2.5 py-1 text-xs font-medium rounded-md text-fg-subtle hover:text-ok hover:bg-ok/10 transition-colors cursor-pointer"
+                        >
+                          Reactivate
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setConfirmTarget({ vk: k, mode: 'delete' })}
                         className="px-2.5 py-1 text-xs font-medium rounded-md text-fg-subtle hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer"
                       >
-                        Revoke
+                        Delete
                       </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
@@ -363,8 +588,16 @@ export default function ApiKeysPage() {
       {justCreated && (
         <KeyCreatedModal created={justCreated} onClose={() => setJustCreated(null)} />
       )}
-      {revokeTarget && (
-        <RevokeConfirm vk={revokeTarget} onConfirm={() => handleRevoke(revokeTarget)} onCancel={() => setRevokeTarget(null)} />
+      {editTarget && (
+        <EditKeyModal vk={editTarget} onClose={() => setEditTarget(null)} onSaved={() => { setEditTarget(null); load() }} />
+      )}
+      {confirmTarget && (
+        <ConfirmDialog
+          vk={confirmTarget.vk}
+          mode={confirmTarget.mode}
+          onConfirm={handleConfirm}
+          onCancel={() => setConfirmTarget(null)}
+        />
       )}
     </div>
   )

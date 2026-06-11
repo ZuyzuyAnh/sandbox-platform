@@ -167,15 +167,16 @@ async def get_sandbox_endpoint(sandbox_id: str, port: int) -> str:
     return _browser_session_url(endpoint)
 
 
-async def start_code_server(sandbox_id: str) -> None:
-    """Start code-server inside the sandbox via execd (matches OpenSandbox vscode example)."""
+async def run_sandbox_command(
+    sandbox_id: str,
+    command: str,
+    cwd: str = "/workspace",
+    background: bool = True,
+) -> None:
+    """Run a shell command inside the sandbox via execd."""
     endpoint, headers = await _fetch_endpoint(sandbox_id, EXECD_PORT)
     base = _browser_session_url(endpoint).rstrip("/")
-    body: dict = {
-        "command": f"code-server --bind-addr 0.0.0.0:{VSCODE_PORT} --auth none /workspace",
-        "cwd": "/workspace",
-        "background": True,
-    }
+    body: dict = {"command": command, "cwd": cwd, "background": background}
     req_headers = {
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
@@ -188,11 +189,19 @@ async def start_code_server(sandbox_id: str) -> None:
             if resp.status_code >= 400:
                 detail = (await resp.aread()).decode(errors="replace")
                 raise RuntimeError(
-                    f"code-server start failed ({resp.status_code}): {detail[:500]}"
+                    f"command failed ({resp.status_code}): {detail[:500]}"
                 )
             async for line in resp.aiter_lines():
                 if line and '"error"' in line.lower():
-                    raise RuntimeError(f"code-server start error: {line[:500]}")
+                    raise RuntimeError(f"command error: {line[:500]}")
+
+
+async def start_code_server(sandbox_id: str) -> None:
+    """Start code-server inside the sandbox via execd (matches OpenSandbox vscode example)."""
+    await run_sandbox_command(
+        sandbox_id,
+        f"code-server --bind-addr 0.0.0.0:{VSCODE_PORT} --auth none /workspace",
+    )
 
 
 async def wait_for_code_server(
