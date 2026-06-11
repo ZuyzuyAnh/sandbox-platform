@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://localhost:3001"
     # Optional — legacy POST /api/spawn (Claude Code task sandboxes) only.
     anthropic_auth_token: str = ""
+    # Injected into every vscode sandbox as ANTHROPIC_BASE_URL (e.g. http://api.example.com/api/llmgw).
+    sandbox_anthropic_base_url: str = ""
     # Auth
     secret_key: str = "change-me-in-production"
     admin_email: str = "admin@example.com"

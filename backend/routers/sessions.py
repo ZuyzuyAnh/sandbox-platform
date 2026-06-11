@@ -58,11 +58,15 @@ async def create_session(
 ):
     network_policy = await _merge_user_policies(current_user.id, db) if settings.enable_network_policy else None
 
+    sandbox_env = {}
+    if settings.sandbox_anthropic_base_url:
+        sandbox_env["ANTHROPIC_BASE_URL"] = settings.sandbox_anthropic_base_url
+
     try:
         result = await create_vscode_sandbox(
             image=settings.vscode_image,
             timeout=settings.session_ttl_seconds,
-            env={},
+            env=sandbox_env,
             metadata={"type": "vscode"},
             network_policy=network_policy,
         )

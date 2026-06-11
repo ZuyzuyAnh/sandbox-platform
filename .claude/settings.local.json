@@ -20,7 +20,13 @@
       "Bash(chmod +x *)",
       "Bash(podman exec *)",
       "Bash(podman ps *)",
-      "Bash(podman stats *)"
+      "Bash(podman stats *)",
+      "Bash(python3 *)",
+      "Bash(/Users/voyeu/Lab/sandbox-platform/backend/.venv/bin/pip install *)",
+      "Bash(python3.13 --version)",
+      "Read(//usr/local/bin/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(pyenv versions *)"
     ]
   }
 }
