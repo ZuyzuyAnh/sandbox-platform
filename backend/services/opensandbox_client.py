@@ -139,10 +139,10 @@ async def _fetch_endpoint(sandbox_id: str, port: int) -> tuple[str, dict[str, st
         return data["endpoint"], headers
 
 
-def _browser_session_url(endpoint: str) -> str:
-    """Normalize OpenSandbox endpoint to a URL reachable from the user's browser."""
+def _replace_host(endpoint: str, host: str) -> str:
+    """Normalize an OpenSandbox endpoint, swapping its host for the given one."""
     raw = endpoint.strip()
-    if settings.opensandbox_session_host:
+    if host:
         # Replace host part when server returns host.docker.internal etc.
         if "://" in raw:
             _, _, rest = raw.partition("://")
@@ -153,12 +153,23 @@ def _browser_session_url(endpoint: str) -> str:
         port_part = rest[:slash] if slash >= 0 else rest
         if ":" in port_part:
             port = port_part.rsplit(":", 1)[1]
-            raw = f"{settings.opensandbox_session_host}:{port}{path}"
+            raw = f"{host}:{port}{path}"
         else:
-            raw = f"{settings.opensandbox_session_host}{path}"
+            raw = f"{host}{path}"
     if not raw.startswith(("http://", "https://")):
         raw = f"http://{raw}"
     return raw.rstrip("/") + "/"
+
+
+def _browser_session_url(endpoint: str) -> str:
+    """URL reachable from the user's browser."""
+    return _replace_host(endpoint, settings.opensandbox_session_host)
+
+
+def _internal_url(endpoint: str) -> str:
+    """URL reachable from the backend itself (may differ when containerized)."""
+    host = settings.opensandbox_internal_host or settings.opensandbox_session_host
+    return _replace_host(endpoint, host)
 
 
 async def get_sandbox_endpoint(sandbox_id: str, port: int) -> str:
@@ -175,7 +186,7 @@ async def run_sandbox_command(
 ) -> None:
     """Run a shell command inside the sandbox via execd."""
     endpoint, headers = await _fetch_endpoint(sandbox_id, EXECD_PORT)
-    base = _browser_session_url(endpoint).rstrip("/")
+    base = _internal_url(endpoint).rstrip("/")
     body: dict = {"command": command, "cwd": cwd, "background": background}
     req_headers = {
         "Content-Type": "application/json",
@@ -211,7 +222,7 @@ async def wait_for_code_server(
 ) -> None:
     """Poll the execd /proxy/8443 URL until code-server responds."""
     endpoint, headers = await _fetch_endpoint(sandbox_id, VSCODE_PORT)
-    url = _browser_session_url(endpoint)
+    url = _internal_url(endpoint)
     deadline = asyncio.get_event_loop().time() + timeout_seconds
     async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
         while asyncio.get_event_loop().time() < deadline:

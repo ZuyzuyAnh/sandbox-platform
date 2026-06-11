@@ -12,6 +12,8 @@
 
 *Spin up AI dev sandboxes in seconds, not hours.*
 
+<img src="docs/screenshots/homepage.png" alt="Flezi sandbox landing page" width="850" />
+
 </div>
 
 ---
@@ -39,6 +41,16 @@ $ claude "add dark mode to the settings page"
 | 📊 | **Usage analytics** | Per-request token records, live charts (daily / by model / top keys), CSV export and **matplotlib PNG reports** |
 | 🌐 | **Network policies** | Per-group egress rules merged into each sandbox's network policy |
 | 🎨 | **Orange/black UI** | Light + dark mode, landing page, animated dashboard |
+
+## 📸 Screenshots
+
+| Dashboard — pool, tasks & live sessions | Gateway configuration |
+|:---:|:---:|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Gateway config](docs/screenshots/gateway.png) |
+
+| Virtual API keys — limits, usage, models | Usage analytics + PNG export |
+|:---:|:---:|
+| ![API keys](docs/screenshots/api.png) | ![Usage analytics](docs/screenshots/usage.png) |
 
 ## 🏗 Architecture
 
@@ -69,26 +81,32 @@ The gateway translates Anthropic Messages API requests to the configured provide
 
 ## ⚡ Quickstart
 
-**Prerequisites:** Docker Desktop, Python 3.12+ with [uv](https://docs.astral.sh/uv/), Node 20+
+**Prerequisites:** Docker Desktop
 
 ```bash
-# 1. Infrastructure (OpenSandbox + Postgres + Redis)
 docker compose up -d
+```
 
-# 2. Backend
+That's it — one command brings up the whole stack: OpenSandbox, Postgres, Redis, the FastAPI backend (`:8000`) and the Next.js frontend (`:3000`), both in dev mode with **hot reload** from your working tree. First boot installs dependencies inside the containers, so give it a few minutes; subsequent starts are fast.
+
+Open **http://localhost:3000** → sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` (default `admin@example.com` / `changeme`).
+
+<details>
+<summary>Run backend/frontend on the host instead (optional)</summary>
+
+```bash
+docker compose up -d postgres redis opensandbox   # infrastructure only
+
 cd backend
-cp .env.example .env          # adjust if needed
 uv sync
 uv run uvicorn main:app --reload --port 8000
 
-# 3. Frontend
 cd frontend
 echo NEXT_PUBLIC_API_URL=http://localhost:8000 > .env.local
 npm install
 npm run dev
 ```
-
-Open **http://localhost:3000** → sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `backend/.env` (default `admin@example.com` / `changeme`).
+</details>
 
 ### First-run flow
 
