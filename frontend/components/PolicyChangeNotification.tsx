@@ -22,15 +22,19 @@ export default function PolicyChangeNotification() {
   if (!visible) return null
 
   return (
-    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-lg px-4">
-      <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 shadow-md">
-        <span className="text-amber-500 text-lg flex-shrink-0">⚠</span>
-        <p className="flex-1 text-sm text-amber-800">
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-lg px-4 animate-rise">
+      <div className="flex items-start gap-3 bg-surface border border-warn/40 rounded-xl px-4 py-3 shadow-2xl" role="alert" aria-live="polite">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="flex-shrink-0 mt-0.5 text-warn">
+          <path d="M9 2L16.5 15H1.5L9 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M9 7v3.5M9 12.7v.3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+        <p className="flex-1 text-sm text-fg-muted">
           Your session was reset due to a network policy change. Please create a new session to continue.
         </p>
         <button
           onClick={() => setVisible(false)}
-          className="text-amber-400 hover:text-amber-600 text-lg leading-none flex-shrink-0"
+          aria-label="Dismiss"
+          className="text-fg-subtle hover:text-fg text-lg leading-none flex-shrink-0 cursor-pointer"
         >
           ×
         </button>

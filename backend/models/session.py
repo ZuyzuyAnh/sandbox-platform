@@ -15,3 +15,5 @@ class SessionRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     user_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Auto-created virtual key injected into the sandbox for Claude Code — revoked on terminate
+    virtual_key_id: Mapped[str | None] = mapped_column(String, nullable=True)

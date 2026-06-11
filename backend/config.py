@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     opensandbox_url: str = "http://localhost:8080"
     # Public host for VS Code session URLs (must match OpenSandbox [server].eip).
     opensandbox_session_host: str = "localhost"
+    # Host the BACKEND itself uses to reach sandbox ports (execd/code-server).
+    # Empty = same as opensandbox_session_host. Set to host.docker.internal
+    # when the backend runs inside a container but sandbox ports are on the host.
+    opensandbox_internal_host: str = ""
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/opensandbox"
     redis_url: str = "redis://localhost:6379"
     poll_interval_seconds: int = 3
@@ -42,6 +46,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://localhost:3001"
     # Optional — legacy POST /api/spawn (Claude Code task sandboxes) only.
     anthropic_auth_token: str = ""
+    # Injected into every vscode sandbox as ANTHROPIC_BASE_URL (e.g. http://api.example.com/api/llmgw).
+    sandbox_anthropic_base_url: str = ""
     # Auth
     secret_key: str = "change-me-in-production"
     admin_email: str = "admin@example.com"

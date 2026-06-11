@@ -16,33 +16,34 @@ export default function PoolGrid() {
   ]
 
   return (
-    <div>
-      <div className="grid grid-cols-16 gap-1" style={{ gridTemplateColumns: 'repeat(16, minmax(0, 1fr))' }}>
+    <div className="bg-surface rounded-xl border border-line p-4">
+      <p className="text-[10px] font-medium text-fg-subtle uppercase tracking-widest mb-3">Sandbox pool</p>
+      <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(16, minmax(0, 1fr))' }}>
         {cells.map((type, i) => (
           <div
             key={i}
-            className={`aspect-square rounded-sm border ${
+            className={`aspect-square rounded-sm transition-colors duration-300 ${
               type === 'busy'
-                ? 'bg-emerald-200 border-emerald-400'
+                ? 'bg-accent'
                 : type === 'warm'
-                ? 'bg-green-100 border-green-300'
-                : 'bg-gray-100 border-gray-200'
+                ? 'bg-accent/30'
+                : 'bg-raised border border-line'
             }`}
           />
         ))}
       </div>
-      <div className="flex items-center gap-6 mt-2">
+      <div className="flex items-center gap-5 mt-3">
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-emerald-200 border border-emerald-400" />
-          <span className="text-xs text-gray-500">Busy ({busy})</span>
+          <div className="w-2.5 h-2.5 rounded-sm bg-accent" />
+          <span className="text-xs text-fg-subtle">Busy ({busy})</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-green-100 border border-green-300" />
-          <span className="text-xs text-gray-500">Warm ({Math.max(warm, 0)})</span>
+          <div className="w-2.5 h-2.5 rounded-sm bg-accent/30" />
+          <span className="text-xs text-fg-subtle">Warm ({Math.max(warm, 0)})</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-gray-100 border border-gray-200" />
-          <span className="text-xs text-gray-500">Cold ({Math.max(cold, 0)})</span>
+          <div className="w-2.5 h-2.5 rounded-sm bg-raised border border-line" />
+          <span className="text-xs text-fg-subtle">Cold ({Math.max(cold, 0)})</span>
         </div>
       </div>
     </div>

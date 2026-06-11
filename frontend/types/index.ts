@@ -124,3 +124,60 @@ export interface LogLine {
   line: string
   ts: string
 }
+
+// ── LLM Gateway: config ─────────────────────────────────────────────────────
+
+export interface LLMConfig {
+  provider: string
+  endpoint_url: string
+  model_name: string
+  api_version: string | null
+}
+
+export interface LLMConfigUpdate extends LLMConfig {
+  api_key: string
+}
+
+// ── LLM Gateway: virtual keys ───────────────────────────────────────────────
+
+export interface VirtualKey {
+  id: string
+  key_prefix: string
+  label: string | null
+  is_active: boolean
+  created_at: string
+  user_id: string
+  /** Max total tokens (input + output). null = unlimited */
+  token_limit: number | null
+  tokens_used: number
+  input_tokens: number
+  output_tokens: number
+  request_count: number
+  last_used_at: string | null
+  /** Distinct models requested with this key */
+  models: string[]
+}
+
+export interface VirtualKeyUpdate {
+  label?: string | null
+  token_limit?: number | null
+  is_active?: boolean
+}
+
+/** Returned once at creation — includes the full key. */
+export interface VirtualKeyCreated extends VirtualKey {
+  key: string
+}
+
+// ── LLM Gateway: token usage (one record per message) ───────────────────────
+
+export interface TokenUsage {
+  id: string
+  user_id: string
+  virtual_key_id: string
+  session_id: string | null
+  model: string
+  input_tokens: number
+  output_tokens: number
+  created_at: string
+}

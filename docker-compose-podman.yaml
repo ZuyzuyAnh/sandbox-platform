@@ -1,0 +1,85 @@
+# Podman-specific compose for local development (macOS with podman-machine).
+# Use this instead of docker-compose.yaml when Docker Engine is unavailable (e.g. IT policy).
+#
+# PREREQUISITE — expose podman's Docker-compatible API over TCP inside the VM (once per boot):
+#   podman machine ssh "podman system service --time=0 tcp://0.0.0.0:2375 &"
+#
+# Then start services:
+#   podman compose -f docker-compose-podman.yaml up -d
+#   cd backend && uvicorn main:app --reload --port 8000
+#   cd frontend && npm run dev
+#
+# HOW IT WORKS (podman impersonating Docker):
+# Instead of mounting a socket file (which fails on macOS podman-machine due to symlink
+# resolution in podman-compose), opensandbox connects to podman's Docker-compatible REST
+# API over TCP. Inside containers, the VM host is reachable at host.containers.internal
+# (192.168.127.254). DOCKER_HOST tells the Docker SDK to use that TCP endpoint instead
+# of /var/run/docker.sock.
+
+name: opensandbox-dashboard-dev
+
+networks:
+  opensandbox-sandbox:
+    name: opensandbox-sandbox
+    driver: bridge
+
+services:
+  vscode-image-pull:
+    image: ${VSCODE_IMAGE:-sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/vscode:latest}
+    entrypoint: ["echo", "VS Code base image ready"]
+    pull_policy: always
+    restart: "no"
+
+  opensandbox:
+    depends_on:
+      vscode-image-pull:
+        condition: service_completed_successfully
+    image: python:3.12-slim
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./deploy/opensandbox-entrypoint.sh:/entrypoint.sh:ro
+    environment:
+      # Point Docker SDK to podman's TCP API — no socket mount needed.
+      # Each podman bridge network has its own gateway. The opensandbox-sandbox network
+      # uses 10.89.0.1 as its gateway (not 10.88.0.1 which is the default network gateway).
+      DOCKER_HOST: tcp://10.89.0.1:2375
+      OPENSANDBOX_INSECURE_SERVER: "YES"
+      OPENSANDBOX_SESSION_EIP: ${OPENSANDBOX_SESSION_HOST:-localhost}
+      OPENSANDBOX_DOCKER_NETWORK: bridge
+      OPENSANDBOX_EGRESS_ENABLED: "1"
+    networks:
+      - opensandbox-sandbox
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: opensandbox
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
