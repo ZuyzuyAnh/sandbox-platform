@@ -12,6 +12,7 @@ from database import AsyncSessionLocal, init_db
 from routers.auth import router as auth_router
 from routers.events import router as events_router
 from routers.groups import router as groups_router
+from routers.llmgw import router as llmgw_router
 from routers.pool import router as pool_router
 from routers.sessions import router as sessions_router
 from routers.spawn import router as spawn_router
@@ -89,6 +90,7 @@ app.include_router(pool_router)
 app.include_router(spawn_router)
 app.include_router(events_router)
 app.include_router(sessions_router)
+app.include_router(llmgw_router)
 
 
 @app.get("/healthz")

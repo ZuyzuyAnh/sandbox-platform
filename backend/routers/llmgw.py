@@ -1,0 +1,277 @@
+"""
+LLM Gateway routes — /api/llmgw/*
+
+Endpoints:
+  Admin only:
+    GET/PUT /api/llmgw/config         — manage LLM backend config
+
+  Authenticated users:
+    POST   /api/llmgw/keys            — create a virtual API key
+    GET    /api/llmgw/keys            — list own keys (admin: all)
+    DELETE /api/llmgw/keys/{key_id}   — revoke a key
+    GET    /api/llmgw/usage           — token usage (own; admin: all)
+
+  Virtual key auth (used by Claude Code inside sandboxes):
+    POST /api/llmgw/v1/messages       — proxy to configured LLM
+"""
+import logging
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from database import get_db
+from dependencies import get_current_user, require_admin
+from models.llm_config import LLMConfig
+from models.token_usage import TokenUsage
+from models.user import User
+from models.virtual_key import VirtualKey
+from services import llmgw_service
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/llmgw", tags=["llmgw"])
+
+
+# ---------------------------------------------------------------------------
+# Schemas
+# ---------------------------------------------------------------------------
+
+class LLMConfigResponse(BaseModel):
+    provider: str
+    endpoint_url: str
+    model_name: str
+    api_version: str | None
+    # api_key intentionally omitted from response
+
+
+class LLMConfigUpdate(BaseModel):
+    provider: str
+    endpoint_url: str
+    api_key: str
+    model_name: str
+    api_version: str | None = None
+
+
+class VirtualKeyCreate(BaseModel):
+    label: str | None = None
+
+
+class VirtualKeyResponse(BaseModel):
+    id: str
+    key_prefix: str
+    label: str | None
+    is_active: bool
+    created_at: str
+    user_id: str
+
+
+class VirtualKeyCreated(VirtualKeyResponse):
+    # Full key returned only once at creation
+    key: str
+
+
+class TokenUsageResponse(BaseModel):
+    id: str
+    user_id: str
+    virtual_key_id: str
+    session_id: str | None
+    model: str
+    input_tokens: int
+    output_tokens: int
+    created_at: str
+
+
+# ---------------------------------------------------------------------------
+# Admin: LLM config management
+# ---------------------------------------------------------------------------
+
+@router.get("/config", response_model=LLMConfigResponse)
+async def get_config(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    config = await llmgw_service.get_llm_config(db)
+    return LLMConfigResponse(
+        provider=config.provider,
+        endpoint_url=config.endpoint_url,
+        model_name=config.model_name,
+        api_version=config.api_version,
+    )
+
+
+@router.put("/config", response_model=LLMConfigResponse)
+async def update_config(
+    body: LLMConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    config = await llmgw_service.get_llm_config(db)
+    config.provider = body.provider
+    config.endpoint_url = body.endpoint_url.rstrip("/")
+    config.api_key = body.api_key
+    config.model_name = body.model_name
+    config.api_version = body.api_version
+    config.updated_by_id = admin.id
+    await db.commit()
+    await db.refresh(config)
+    return LLMConfigResponse(
+        provider=config.provider,
+        endpoint_url=config.endpoint_url,
+        model_name=config.model_name,
+        api_version=config.api_version,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Virtual key management
+# ---------------------------------------------------------------------------
+
+@router.post("/keys", response_model=VirtualKeyCreated, status_code=status.HTTP_201_CREATED)
+async def create_key(
+    body: VirtualKeyCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    raw_key, key_hash, key_prefix = VirtualKey.generate()
+    vk = VirtualKey(
+        user_id=current_user.id,
+        key_hash=key_hash,
+        key_prefix=key_prefix,
+        label=body.label,
+    )
+    db.add(vk)
+    await db.commit()
+    await db.refresh(vk)
+    return VirtualKeyCreated(
+        id=vk.id,
+        key=raw_key,
+        key_prefix=vk.key_prefix,
+        label=vk.label,
+        is_active=vk.is_active,
+        created_at=vk.created_at.isoformat(),
+        user_id=vk.user_id,
+    )
+
+
+@router.get("/keys", response_model=list[VirtualKeyResponse])
+async def list_keys(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role == "admin":
+        result = await db.execute(select(VirtualKey).order_by(VirtualKey.created_at.desc()))
+    else:
+        result = await db.execute(
+            select(VirtualKey)
+            .where(VirtualKey.user_id == current_user.id)
+            .order_by(VirtualKey.created_at.desc())
+        )
+    keys = result.scalars().all()
+    return [
+        VirtualKeyResponse(
+            id=k.id, key_prefix=k.key_prefix, label=k.label,
+            is_active=k.is_active, created_at=k.created_at.isoformat(),
+            user_id=k.user_id,
+        )
+        for k in keys
+    ]
+
+
+@router.delete("/keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_key(
+    key_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(select(VirtualKey).where(VirtualKey.id == key_id))
+    vk = result.scalar_one_or_none()
+    if not vk:
+        raise HTTPException(status_code=404, detail="Key not found")
+    if vk.user_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not your key")
+    vk.is_active = False
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Token usage
+# ---------------------------------------------------------------------------
+
+@router.get("/usage", response_model=list[TokenUsageResponse])
+async def get_usage(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role == "admin":
+        result = await db.execute(select(TokenUsage).order_by(TokenUsage.created_at.desc()))
+    else:
+        result = await db.execute(
+            select(TokenUsage)
+            .where(TokenUsage.user_id == current_user.id)
+            .order_by(TokenUsage.created_at.desc())
+        )
+    rows = result.scalars().all()
+    return [
+        TokenUsageResponse(
+            id=r.id, user_id=r.user_id, virtual_key_id=r.virtual_key_id,
+            session_id=r.session_id, model=r.model,
+            input_tokens=r.input_tokens, output_tokens=r.output_tokens,
+            created_at=r.created_at.isoformat(),
+        )
+        for r in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Proxy — virtual key auth (NOT JWT)
+# Claude Code inside sandboxes hits this endpoint.
+# Auth header: "x-api-key: <virtual-key>"  (Anthropic SDK default)
+# Optional session tracking: "x-session-id: <sandbox-session-id>"
+# ---------------------------------------------------------------------------
+
+@router.post("/v1/messages")
+async def proxy_messages(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    x_api_key: str | None = Header(default=None),
+    x_session_id: str | None = Header(default=None),
+):
+    # Extract virtual key from x-api-key or Authorization: Bearer
+    raw_key = x_api_key
+    if not raw_key:
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            raw_key = auth[7:]
+
+    if not raw_key:
+        raise HTTPException(status_code=401, detail="Missing API key")
+
+    vk = await llmgw_service.authenticate_virtual_key(raw_key, db)
+    if not vk:
+        raise HTTPException(status_code=401, detail="Invalid or revoked API key")
+
+    config = await llmgw_service.get_llm_config(db)
+    if not config.endpoint_url or not config.api_key:
+        raise HTTPException(status_code=503, detail="LLM gateway not configured — ask an admin to set it up")
+
+    body = await request.json()
+
+    try:
+        stream = await llmgw_service.proxy(
+            body=body,
+            user_id=vk.user_id,
+            virtual_key_id=vk.id,
+            session_id=x_session_id,
+            config=config,
+        )
+    except Exception as e:
+        logger.exception("LLM proxy error")
+        raise HTTPException(status_code=502, detail=f"LLM backend error: {e}")
+
+    return StreamingResponse(
+        stream,
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
