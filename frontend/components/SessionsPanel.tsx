@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import SessionLogsModal from '@/components/SessionLogsModal'
 import { terminateSession } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSessions } from '@/hooks/useSessions'
@@ -15,12 +16,13 @@ function timeLeft(expiresAt: string, now: number): { label: string; urgent: bool
 }
 
 function SessionRow({
-  session, now, showOwner, onTerminate,
+  session, now, showOwner, onTerminate, onShowLogs,
 }: {
   session: Session
   now: number
   showOwner: boolean
   onTerminate: (id: string) => Promise<void>
+  onShowLogs: (s: Session) => void
 }) {
   const [terminating, setTerminating] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -84,6 +86,12 @@ function SessionRow({
                 <svg width="13" height="13" viewBox="0 0 12 12" fill="none"><rect x="4" y="4" width="6.5" height="7" rx="1" stroke="currentColor" strokeWidth="1.2" /><path d="M1.5 8.5v-6a1 1 0 0 1 1-1h5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
               )}
             </button>
+            <button
+              onClick={() => onShowLogs(session)}
+              className="px-2 py-1 text-xs font-medium rounded-md text-fg-subtle hover:text-fg hover:bg-raised transition-colors cursor-pointer"
+            >
+              Logs
+            </button>
           </>
         )}
         <button
@@ -102,6 +110,7 @@ export default function SessionsPanel() {
   const { sessions, isLoading, mutate } = useSessions()
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
+  const [logsTarget, setLogsTarget] = useState<Session | null>(null)
 
   // Single shared clock so all countdowns tick together
   const [now, setNow] = useState(() => Date.now())
@@ -152,9 +161,14 @@ export default function SessionsPanel() {
               now={now}
               showOwner={isAdmin}
               onTerminate={handleTerminate}
+              onShowLogs={setLogsTarget}
             />
           ))}
         </div>
+      )}
+
+      {logsTarget && (
+        <SessionLogsModal session={logsTarget} onClose={() => setLogsTarget(null)} />
       )}
     </div>
   )

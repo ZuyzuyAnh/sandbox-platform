@@ -31,10 +31,22 @@ from services.opensandbox_client import (
 # Installed in every VS Code sandbox so `claude` works out of the box.
 # The vscode image has no node/npm, so use the native installer (standalone
 # binary into ~/.local/bin), then make sure interactive shells see it.
+# Output goes to /tmp/claude-install.log AND the container's stdout
+# (/proc/1/fd/1) so it shows up in the session log stream in the UI.
 CLAUDE_CODE_INSTALL_CMD = (
-    "curl -fsSL https://claude.ai/install.sh | bash && "
+    "( echo '=== Installing Claude Code... ==='; "
+    "curl -fsSL https://claude.ai/install.sh | bash "
+    "&& echo '=== Claude Code install OK ===' "
+    "|| echo '=== Claude Code install FAILED ==='; "
     'grep -qs ".local/bin" "$HOME/.bashrc" || '
-    "echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> \"$HOME/.bashrc\""
+    "echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> \"$HOME/.bashrc\"; "
+    # code-server's default terminal is /bin/sh, which never reads .bashrc —
+    # make new terminals use bash so `claude` is on PATH.
+    'mkdir -p "$HOME/.local/share/code-server/User"; '
+    '[ -f "$HOME/.local/share/code-server/User/settings.json" ] || '
+    "echo '{\"terminal.integrated.defaultProfile.linux\": \"bash\"}' "
+    '> "$HOME/.local/share/code-server/User/settings.json" '
+    ") 2>&1 | tee /tmp/claude-install.log > /proc/1/fd/1"
 )
 
 logger = logging.getLogger(__name__)
