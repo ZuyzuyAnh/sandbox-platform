@@ -9,7 +9,9 @@ from database import get_db
 from dependencies import require_admin
 from models.group import Group, UserGroup
 from models.user import User
+from redis_client import get_redis
 from services.auth_service import hash_password
+from services.llmgw_service import _rate_key
 
 router = APIRouter()
 
@@ -115,13 +117,20 @@ async def patch_user(
         user.role = req.role
     if req.is_active is not None:
         user.is_active = req.is_active
+    rate_limit_changed = False
     if "token_limit" in req.model_fields_set:
         user.token_limit = req.token_limit
+        rate_limit_changed = True
     if "token_limit_window_minutes" in req.model_fields_set:
         user.token_limit_window_minutes = req.token_limit_window_minutes
+        rate_limit_changed = True
 
     await db.commit()
     await db.refresh(user)
+
+    if rate_limit_changed:
+        redis = await get_redis()
+        await redis.delete(_rate_key(user_id))
     return await _user_with_groups(user, db)
 
 
