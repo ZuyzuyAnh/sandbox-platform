@@ -5,7 +5,7 @@ USER root
 # Base image has code-server only; Node/npm are required for Claude Code (Node 18+).
 # Using NodeSource repo instead of Debian's default packages — avoids stale apt cache
 # hash mismatches and ensures a current Node.js LTS version.
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates git \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && npm install -g @anthropic-ai/claude-code@latest --quiet \
