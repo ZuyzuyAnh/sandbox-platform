@@ -14,6 +14,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 RUN echo '#!/bin/bash\nexport ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN}\nexec claude "$@"' \
     > /usr/local/bin/claude-auth && chmod +x /usr/local/bin/claude-auth
 
+RUN chsh -s /bin/bash vscode
+
+ENV TERM=xterm-256color
+
 USER vscode
 
 WORKDIR /workspace
