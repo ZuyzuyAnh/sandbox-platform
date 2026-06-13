@@ -22,11 +22,15 @@ class CreateUserRequest(BaseModel):
     role: str = "user"
 
 
+VALID_SANDBOX_ROLES = {"ba", "dev", "tester", "devops"}
+
+
 class PatchUserRequest(BaseModel):
     role: str | None = None
     is_active: bool | None = None
     token_limit: int | None = None
     token_limit_window_minutes: int | None = None
+    sandbox_role: str | None = None
 
 
 class UserResponse(BaseModel):
@@ -37,6 +41,7 @@ class UserResponse(BaseModel):
     groups: list[str]
     token_limit: int | None
     token_limit_window_minutes: int | None
+    sandbox_role: str | None
 
 
 async def _user_with_groups(user: User, db: AsyncSession) -> UserResponse:
@@ -54,6 +59,7 @@ async def _user_with_groups(user: User, db: AsyncSession) -> UserResponse:
         groups=group_names,
         token_limit=user.token_limit,
         token_limit_window_minutes=user.token_limit_window_minutes,
+        sandbox_role=user.sandbox_role,
     )
 
 
@@ -124,6 +130,10 @@ async def patch_user(
     if "token_limit_window_minutes" in req.model_fields_set:
         user.token_limit_window_minutes = req.token_limit_window_minutes
         rate_limit_changed = True
+    if "sandbox_role" in req.model_fields_set:
+        if req.sandbox_role is not None and req.sandbox_role not in VALID_SANDBOX_ROLES:
+            raise HTTPException(status_code=400, detail=f"sandbox_role must be one of {sorted(VALID_SANDBOX_ROLES)} or null")
+        user.sandbox_role = req.sandbox_role
 
     await db.commit()
     await db.refresh(user)

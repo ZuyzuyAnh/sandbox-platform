@@ -21,3 +21,6 @@ class User(Base):
     # Token rate limit — NULL = unlimited (no Redis key created). window NULL = unlimited.
     token_limit: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     token_limit_window_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    # Work role — determines which VS Code sandbox image is used (ba/dev/tester/devops).
+    # NULL = use the default vscode_image from config.
+    sandbox_role: Mapped[str | None] = mapped_column(String, nullable=True, default=None)

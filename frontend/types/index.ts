@@ -28,12 +28,17 @@ export interface GroupMember {
   role: string
 }
 
+export type SandboxRole = 'ba' | 'dev' | 'tester' | 'devops'
+
 export interface UserRecord {
   id: string
   email: string
   role: string
   is_active: boolean
   groups: string[]
+  sandbox_role: SandboxRole | null
+  token_limit: number | null
+  token_limit_window_minutes: number | null
 }
 
 export type SandboxStatus = 'running' | 'queued' | 'completed' | 'error'

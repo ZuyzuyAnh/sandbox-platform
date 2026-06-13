@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell,
+  Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { downloadUsageReport, fetchTokenUsage, fetchUsers, fetchVirtualKeys } from '@/lib/api'
@@ -304,6 +305,91 @@ export default function UsagePage() {
               <span className="flex items-center gap-1.5 text-xs text-fg-subtle">
                 <span className="w-2.5 h-0.5 rounded-full" style={{ background: colors.neutral }} /> Input
               </span>
+            </div>
+          </div>
+
+          {/* Donut charts */}
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            {/* Input vs Output */}
+            <div className="bg-surface border border-line rounded-xl p-5">
+              <h3 className="text-sm font-semibold font-display text-fg mb-1">Input vs Output</h3>
+              <p className="text-xs text-fg-subtle mb-3">Token type split for the selected period</p>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={[
+                      { name: 'Input', value: totals.input },
+                      { name: 'Output', value: totals.output },
+                    ]}
+                    cx="50%" cy="50%"
+                    innerRadius={56} outerRadius={80}
+                    paddingAngle={totals.input > 0 && totals.output > 0 ? 3 : 0}
+                    dataKey="value"
+                    strokeWidth={0}
+                  >
+                    <Cell fill={colors.neutral} fillOpacity={0.85} />
+                    <Cell fill={colors.accent} fillOpacity={0.9} />
+                  </Pie>
+                  <Tooltip content={<ChartTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex items-center justify-center gap-6 mt-1">
+                {[
+                  { label: 'Input', value: totals.input, color: colors.neutral },
+                  { label: 'Output', value: totals.output, color: colors.accent },
+                ].map(({ label, value, color }) => {
+                  const pct = totals.tokens > 0 ? ((value / totals.tokens) * 100).toFixed(1) : '0.0'
+                  return (
+                    <div key={label} className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
+                      <span className="text-xs text-fg-subtle">{label}</span>
+                      <span className="text-xs font-mono text-fg-muted">{formatTokens(value)}</span>
+                      <span className="text-[10px] text-fg-subtle">({pct}%)</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Tokens by model pie */}
+            <div className="bg-surface border border-line rounded-xl p-5">
+              <h3 className="text-sm font-semibold font-display text-fg mb-1">Model distribution</h3>
+              <p className="text-xs text-fg-subtle mb-3">Share of total tokens per model</p>
+              {byModel.length === 0 ? (
+                <div className="flex items-center justify-center h-[200px] text-xs text-fg-subtle">No data</div>
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <PieChart>
+                      <Pie
+                        data={byModel.map(m => ({ name: m.model, value: m.tokens }))}
+                        cx="50%" cy="50%"
+                        innerRadius={56} outerRadius={80}
+                        paddingAngle={byModel.length > 1 ? 3 : 0}
+                        dataKey="value"
+                        strokeWidth={0}
+                      >
+                        {byModel.map((_, i) => (
+                          <Cell key={i} fill={colors.series[i % colors.series.length]} fillOpacity={0.88} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<ChartTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="flex flex-col gap-1.5 mt-1">
+                    {byModel.slice(0, 5).map((m, i) => {
+                      const pct = totals.tokens > 0 ? ((m.tokens / totals.tokens) * 100).toFixed(1) : '0.0'
+                      return (
+                        <div key={m.model} className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: colors.series[i % colors.series.length] }} />
+                          <span className="text-[11px] font-mono text-fg-muted truncate flex-1" title={m.model}>{m.model}</span>
+                          <span className="text-[11px] font-mono text-fg-subtle flex-shrink-0">{pct}%</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
             </div>
           </div>
 

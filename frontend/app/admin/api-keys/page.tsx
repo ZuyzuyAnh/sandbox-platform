@@ -326,6 +326,8 @@ export default function ApiKeysPage() {
 
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'active' | 'revoked'>('all')
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 5
 
   const [createOpen, setCreateOpen] = useState(false)
   const [justCreated, setJustCreated] = useState<VirtualKeyCreated | null>(null)
@@ -349,6 +351,7 @@ export default function ApiKeysPage() {
   }
 
   useEffect(() => { load() }, [])
+  useEffect(() => { setPage(1) }, [search, filter])
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
@@ -362,6 +365,10 @@ export default function ApiKeysPage() {
       return matchSearch && matchFilter
     })
   }, [keys, search, filter, emailByUserId])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
   const stats = useMemo(() => ({
     total: keys.length,
@@ -452,6 +459,37 @@ export default function ApiKeysPage() {
             </button>
           ))}
         </div>
+
+        {/* Pagination controls */}
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={safePage <= 1}
+            className="w-7 h-7 flex items-center justify-center rounded-md text-fg-subtle hover:text-fg hover:bg-raised disabled:opacity-30 transition-colors cursor-pointer disabled:cursor-default"
+            aria-label="Previous page"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+            <button
+              key={p}
+              onClick={() => setPage(p)}
+              className={`w-7 h-7 flex items-center justify-center rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                p === safePage ? 'bg-accent text-accent-fg' : 'text-fg-subtle hover:text-fg hover:bg-raised'
+              }`}
+            >
+              {p}
+            </button>
+          ))}
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={safePage >= totalPages}
+            className="w-7 h-7 flex items-center justify-center rounded-md text-fg-subtle hover:text-fg hover:bg-raised disabled:opacity-30 transition-colors cursor-pointer disabled:cursor-default"
+            aria-label="Next page"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -460,6 +498,7 @@ export default function ApiKeysPage() {
 
       {/* Table */}
       <div className="bg-surface border border-line rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
         {loading ? (
           <div className="p-4 flex flex-col gap-3">
             {[0, 1, 2].map(i => <div key={i} className="h-10 skeleton rounded-lg" />)}
@@ -482,7 +521,7 @@ export default function ApiKeysPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((k, i) => {
+              {paged.map((k, i) => {
                 const pct = k.token_limit ? Math.min(100, (k.tokens_used / k.token_limit) * 100) : null
                 return (
                   <tr key={k.id} className="border-b border-line/50 last:border-0 hover:bg-raised/40 transition-colors animate-fade-in" style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }}>
@@ -572,10 +611,14 @@ export default function ApiKeysPage() {
             </tbody>
           </table>
         )}
+        </div>
       </div>
 
       {!loading && filtered.length > 0 && (
-        <p className="mt-3 text-xs text-fg-subtle">{filtered.length} of {keys.length} keys shown</p>
+        <p className="mt-3 text-xs text-fg-subtle">
+          {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length} keys
+          {filtered.length < keys.length && ` (${keys.length} total)`}
+        </p>
       )}
 
       {/* Modals */}
