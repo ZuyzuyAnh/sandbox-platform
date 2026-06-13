@@ -28,6 +28,15 @@ from services.opensandbox_client import (
     wait_for_ready,
 )
 
+# Maps each work role to the corresponding VS Code sandbox image built by CuongDV.
+# Fallback: settings.vscode_image (used when user has no sandbox_role assigned).
+ROLE_IMAGE: dict[str, str] = {
+    "ba":     "opensandbox/vscode-claude-ba:latest",
+    "dev":    "opensandbox/vscode-claude-dev:latest",
+    "tester": "opensandbox/vscode-claude-tester:latest",
+    "devops": "opensandbox/vscode-claude-devops:latest",
+}
+
 # Installed in every VS Code sandbox so `claude` works out of the box.
 # The vscode image has no node/npm, so use the native installer (standalone
 # binary into ~/.local/bin), then make sure interactive shells see it.
@@ -102,9 +111,11 @@ async def create_session(
         "ANTHROPIC_AUTH_TOKEN": raw_key,
     }
 
+    image = ROLE_IMAGE.get(current_user.sandbox_role or "", settings.vscode_image)
+
     try:
         result = await create_vscode_sandbox(
-            image=settings.vscode_image,
+            image=image,
             timeout=settings.session_ttl_seconds,
             env=sandbox_env,
             metadata={"type": "vscode"},

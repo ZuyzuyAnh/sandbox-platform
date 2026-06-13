@@ -132,7 +132,7 @@ export async function createUser(email: string, password: string, role: string):
   return res.json()
 }
 
-export async function patchUser(id: string, data: { role?: string; is_active?: boolean }): Promise<UserRecord> {
+export async function patchUser(id: string, data: { role?: string; is_active?: boolean; sandbox_role?: string | null; token_limit?: number | null; token_limit_window_minutes?: number | null }): Promise<UserRecord> {
   const res = await apiFetch(`${apiBase()}/api/users/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
