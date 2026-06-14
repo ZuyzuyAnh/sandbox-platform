@@ -182,7 +182,82 @@ export interface TokenUsage {
   virtual_key_id: string
   session_id: string | null
   model: string
+  /** Real tokens billed by the model — includes agent system prompt + tool schemas */
   input_tokens: number
   output_tokens: number
+  /** Conversational content only — what the user typed and the model replied */
+  content_input_tokens: number
+  content_output_tokens: number
   created_at: string
+}
+
+// ── Guardrails ───────────────────────────────────────────────────────────────
+
+export type GuardrailType = 'blocked_keywords' | 'pii_block' | 'max_prompt_chars'
+
+export interface GuardrailPolicy {
+  id: string
+  name: string
+  description: string | null
+  type: GuardrailType
+  config: Record<string, unknown>
+  enabled: boolean
+  created_at: string
+}
+
+export interface GuardrailCreate {
+  name: string
+  description?: string | null
+  type: GuardrailType
+  config: Record<string, unknown>
+  enabled?: boolean
+}
+
+export interface GuardrailUpdate {
+  name?: string
+  description?: string | null
+  config?: Record<string, unknown>
+  enabled?: boolean
+}
+
+// ── Per-user dashboard ─────────────────────────────────────────────────────────
+
+export interface ModelUsage {
+  model: string
+  tokens: number
+  requests: number
+}
+
+export interface SessionSummary {
+  id: string
+  status: string
+  created_at: string
+  expires_at: string
+  message_count: number
+  tokens: number
+}
+
+export interface ChatExchange {
+  id: string
+  session_id: string | null
+  model: string
+  prompt: string
+  response: string
+  input_tokens: number
+  output_tokens: number
+  content_input_tokens: number
+  content_output_tokens: number
+  created_at: string
+}
+
+export interface UserOverview {
+  user: UserRecord
+  total_input: number
+  total_output: number
+  total_content_input: number
+  total_content_output: number
+  total_requests: number
+  by_model: ModelUsage[]
+  sessions: SessionSummary[]
+  chat: ChatExchange[]
 }

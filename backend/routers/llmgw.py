@@ -23,17 +23,18 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from dependencies import get_current_user, require_admin
+from models.guardrail import GuardrailPolicy, KeyGuardrail, UserGuardrail
 from models.llm_config import LLMConfig
 from models.token_usage import TokenUsage
 from models.user import User
 from models.virtual_key import VirtualKey
 from redis_client import get_redis
-from services import llmgw_service
+from services import guardrails, llmgw_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/llmgw", tags=["llmgw"])
@@ -99,7 +100,38 @@ class TokenUsageResponse(BaseModel):
     model: str
     input_tokens: int
     output_tokens: int
+    content_input_tokens: int = 0
+    content_output_tokens: int = 0
     created_at: str
+
+
+class GuardrailCreate(BaseModel):
+    name: str
+    description: str | None = None
+    type: str
+    config: dict = {}
+    enabled: bool = True
+
+
+class GuardrailUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    config: dict | None = None
+    enabled: bool | None = None
+
+
+class GuardrailResponse(BaseModel):
+    id: str
+    name: str
+    description: str | None
+    type: str
+    config: dict
+    enabled: bool
+    created_at: str
+
+
+class KeyGuardrailUpdate(BaseModel):
+    policy_ids: list[str]
 
 
 # ---------------------------------------------------------------------------
@@ -308,6 +340,8 @@ async def get_usage(
             id=r.id, user_id=r.user_id, virtual_key_id=r.virtual_key_id,
             session_id=r.session_id, model=r.model,
             input_tokens=r.input_tokens, output_tokens=r.output_tokens,
+            content_input_tokens=r.content_input_tokens,
+            content_output_tokens=r.content_output_tokens,
             created_at=r.created_at.isoformat(),
         )
         for r in rows
@@ -356,6 +390,132 @@ async def usage_report(
 
 
 # ---------------------------------------------------------------------------
+# Guardrails (admin manages policies; any user can view; assigned to keys)
+# ---------------------------------------------------------------------------
+
+def _guardrail_response(p: GuardrailPolicy) -> GuardrailResponse:
+    return GuardrailResponse(
+        id=p.id, name=p.name, description=p.description, type=p.type,
+        config=p.config or {}, enabled=p.enabled,
+        created_at=p.created_at.isoformat(),
+    )
+
+
+async def _effective_policies(key_id: str, user_id: str, db: AsyncSession) -> list[dict]:
+    """
+    Enabled guardrail policies that apply to a request — the union of policies
+    attached to the virtual key and policies attached to the owning user.
+    Deduped (one row per policy) for the checker.
+    """
+    key_ids = select(KeyGuardrail.policy_id).where(KeyGuardrail.virtual_key_id == key_id)
+    user_ids = select(UserGuardrail.policy_id).where(UserGuardrail.user_id == user_id)
+    result = await db.execute(
+        select(GuardrailPolicy).where(
+            GuardrailPolicy.enabled == True,
+            or_(GuardrailPolicy.id.in_(key_ids), GuardrailPolicy.id.in_(user_ids)),
+        )
+    )
+    return [
+        {"name": p.name, "type": p.type, "config": p.config or {}, "enabled": p.enabled}
+        for p in result.scalars().all()
+    ]
+
+
+@router.get("/guardrails", response_model=list[GuardrailResponse])
+async def list_guardrails(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(select(GuardrailPolicy).order_by(GuardrailPolicy.created_at))
+    return [_guardrail_response(p) for p in result.scalars().all()]
+
+
+@router.post("/guardrails", response_model=GuardrailResponse, status_code=status.HTTP_201_CREATED)
+async def create_guardrail(
+    body: GuardrailCreate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    if body.type not in guardrails.VALID_TYPES:
+        raise HTTPException(status_code=422, detail=f"type must be one of {sorted(guardrails.VALID_TYPES)}")
+    p = GuardrailPolicy(
+        name=body.name, description=body.description, type=body.type,
+        config=body.config, enabled=body.enabled,
+    )
+    db.add(p)
+    await db.commit()
+    await db.refresh(p)
+    return _guardrail_response(p)
+
+
+@router.patch("/guardrails/{policy_id}", response_model=GuardrailResponse)
+async def update_guardrail(
+    policy_id: str,
+    body: GuardrailUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    result = await db.execute(select(GuardrailPolicy).where(GuardrailPolicy.id == policy_id))
+    p = result.scalar_one_or_none()
+    if not p:
+        raise HTTPException(status_code=404, detail="Guardrail not found")
+    fields = body.model_fields_set
+    if "name" in fields and body.name is not None:
+        p.name = body.name
+    if "description" in fields:
+        p.description = body.description
+    if "config" in fields and body.config is not None:
+        p.config = body.config
+    if "enabled" in fields and body.enabled is not None:
+        p.enabled = body.enabled
+    await db.commit()
+    await db.refresh(p)
+    return _guardrail_response(p)
+
+
+@router.delete("/guardrails/{policy_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_guardrail(
+    policy_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    await db.execute(delete(KeyGuardrail).where(KeyGuardrail.policy_id == policy_id))
+    await db.execute(delete(GuardrailPolicy).where(GuardrailPolicy.id == policy_id))
+    await db.commit()
+
+
+@router.get("/keys/{key_id}/guardrails", response_model=list[str])
+async def get_key_guardrails(
+    key_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _get_owned_key(key_id, current_user, db)
+    result = await db.execute(
+        select(KeyGuardrail.policy_id).where(KeyGuardrail.virtual_key_id == key_id)
+    )
+    return [row[0] for row in result.all()]
+
+
+@router.put("/keys/{key_id}/guardrails", response_model=list[str])
+async def set_key_guardrails(
+    key_id: str,
+    body: KeyGuardrailUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Replace the set of guardrails attached to a key. Admin only."""
+    result = await db.execute(select(VirtualKey).where(VirtualKey.id == key_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Key not found")
+    await db.execute(delete(KeyGuardrail).where(KeyGuardrail.virtual_key_id == key_id))
+    for pid in dict.fromkeys(body.policy_ids):
+        db.add(KeyGuardrail(virtual_key_id=key_id, policy_id=pid))
+    await db.commit()
+    return list(dict.fromkeys(body.policy_ids))
+
+
+# ---------------------------------------------------------------------------
 # Proxy — virtual key auth (NOT JWT)
 # Claude Code inside sandboxes hits this endpoint.
 # Auth header: "x-api-key: <virtual-key>"  (Anthropic SDK default)
@@ -400,6 +560,18 @@ async def proxy_messages(
         raise HTTPException(status_code=503, detail="LLM gateway not configured — ask an admin to set it up")
 
     body = await request.json()
+
+    # Enforce guardrails attached to this key or its owning user (before spending tokens)
+    policies = await _effective_policies(vk.id, vk.user_id, db)
+    if policies:
+        prompt = llmgw_service.extract_last_user_text(body)
+        violation = guardrails.check_prompt(prompt, policies)
+        if violation:
+            return StreamingResponse(
+                llmgw_service.blocked_sse_stream(violation),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
 
     redis = await get_redis()
     remaining = await llmgw_service.check_rate_limit(vk.user_id, db, redis)

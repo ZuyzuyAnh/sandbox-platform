@@ -1,6 +1,9 @@
 import { apiBase } from '@/lib/origin'
 import {
   ActivityResponse,
+  GuardrailCreate,
+  GuardrailPolicy,
+  GuardrailUpdate,
   Group,
   GroupMember,
   LLMConfig,
@@ -15,6 +18,7 @@ import {
   SpawnResponse,
   TokenUsage,
   User,
+  UserOverview,
   UserRecord,
   VirtualKey,
   VirtualKeyCreated,
@@ -144,6 +148,80 @@ export async function patchUser(id: string, data: { role?: string; is_active?: b
 
 export async function deleteUser(id: string): Promise<void> {
   await apiFetch(`${apiBase()}/api/users/${id}`, { method: 'DELETE' })
+}
+
+export async function fetchUserOverview(id: string): Promise<UserOverview> {
+  const res = await apiFetch(`${apiBase()}/api/users/${id}/overview`)
+  if (!res.ok) throw new Error('Failed to fetch user overview')
+  return res.json()
+}
+
+export async function fetchUserGuardrails(id: string): Promise<string[]> {
+  const res = await apiFetch(`${apiBase()}/api/users/${id}/guardrails`)
+  if (!res.ok) throw new Error('Failed to fetch user guardrails')
+  return res.json()
+}
+
+export async function setUserGuardrails(id: string, policyIds: string[]): Promise<string[]> {
+  const res = await apiFetch(`${apiBase()}/api/users/${id}/guardrails`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ policy_ids: policyIds }),
+  })
+  if (!res.ok) throw new Error('Failed to update user guardrails')
+  return res.json()
+}
+
+// ── Guardrails ──────────────────────────────────────────────────────────────
+
+export async function fetchGuardrails(): Promise<GuardrailPolicy[]> {
+  const res = await apiFetch(`${apiBase()}/api/llmgw/guardrails`)
+  if (!res.ok) throw new Error('Failed to fetch guardrails')
+  return res.json()
+}
+
+export async function createGuardrail(body: GuardrailCreate): Promise<GuardrailPolicy> {
+  const res = await apiFetch(`${apiBase()}/api/llmgw/guardrails`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail ?? 'Failed to create guardrail')
+  }
+  return res.json()
+}
+
+export async function updateGuardrail(id: string, body: GuardrailUpdate): Promise<GuardrailPolicy> {
+  const res = await apiFetch(`${apiBase()}/api/llmgw/guardrails/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error('Failed to update guardrail')
+  return res.json()
+}
+
+export async function deleteGuardrail(id: string): Promise<void> {
+  const res = await apiFetch(`${apiBase()}/api/llmgw/guardrails/${id}`, { method: 'DELETE' })
+  if (!res.ok && res.status !== 204) throw new Error('Failed to delete guardrail')
+}
+
+export async function fetchKeyGuardrails(keyId: string): Promise<string[]> {
+  const res = await apiFetch(`${apiBase()}/api/llmgw/keys/${keyId}/guardrails`)
+  if (!res.ok) throw new Error('Failed to fetch key guardrails')
+  return res.json()
+}
+
+export async function setKeyGuardrails(keyId: string, policyIds: string[]): Promise<string[]> {
+  const res = await apiFetch(`${apiBase()}/api/llmgw/keys/${keyId}/guardrails`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ policy_ids: policyIds }),
+  })
+  if (!res.ok) throw new Error('Failed to update key guardrails')
+  return res.json()
 }
 
 // ── Admin: Groups ───────────────────────────────────────────────────────────

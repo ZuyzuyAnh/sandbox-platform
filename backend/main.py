@@ -60,6 +60,20 @@ async def _seed_defaults() -> None:
 
         await db.commit()
 
+        # Seed built-in guardrail scenarios (only if none exist yet)
+        from models.guardrail import GuardrailPolicy
+        from services.guardrails import DEFAULT_POLICIES
+
+        existing = await db.execute(select(GuardrailPolicy))
+        if not existing.scalars().first():
+            for p in DEFAULT_POLICIES:
+                db.add(GuardrailPolicy(
+                    name=p["name"], description=p["description"],
+                    type=p["type"], config=p["config"],
+                ))
+            await db.commit()
+            logger.info("Seeded %d default guardrail policies", len(DEFAULT_POLICIES))
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

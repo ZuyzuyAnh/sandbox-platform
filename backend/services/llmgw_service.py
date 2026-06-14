@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import AsyncSessionLocal
+from models.chat_message import ChatMessage
 from models.llm_config import LLMConfig
 from models.token_usage import TokenUsage
 from models.user import User
@@ -141,6 +142,55 @@ def no_tokens_sse_stream() -> AsyncGenerator[str, None]:
     return _gen()
 
 
+def blocked_sse_stream(reason: str) -> AsyncGenerator[str, None]:
+    """Inject a synthetic Anthropic SSE response telling the user a guardrail blocked the request."""
+    async def _gen():
+        message_id = f"msg_{uuid.uuid4().hex[:24]}"
+        yield _sse("message_start", {
+            "type": "message_start",
+            "message": {
+                "id": message_id, "type": "message", "role": "assistant",
+                "content": [], "model": "guardrail",
+                "stop_reason": None, "stop_sequence": None,
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+            },
+        })
+        yield _sse("ping", {"type": "ping"})
+        yield _sse("content_block_start", {
+            "type": "content_block_start", "index": 0,
+            "content_block": {"type": "text", "text": ""},
+        })
+        yield _sse("content_block_delta", {
+            "type": "content_block_delta", "index": 0,
+            "delta": {"type": "text_delta", "text": reason},
+        })
+        yield _sse("content_block_stop", {"type": "content_block_stop", "index": 0})
+        yield _sse("message_delta", {
+            "type": "message_delta",
+            "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+            "usage": {"output_tokens": 0},
+        })
+        yield _sse("message_stop", {"type": "message_stop"})
+    return _gen()
+
+
+def extract_last_user_text(body: dict) -> str:
+    """Pull the most recent user message text from an Anthropic request body."""
+    for msg in reversed(body.get("messages", [])):
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            text = " ".join(
+                b.get("text", "") for b in content if b.get("type") == "text"
+            ).strip()
+            if text:
+                return text
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # Anthropic → OpenAI conversion
 # ---------------------------------------------------------------------------
@@ -252,6 +302,7 @@ async def stream_as_anthropic(
     virtual_key_id: str,
     session_id: str | None,
     redis: Redis | None = None,
+    prompt: str = "",
 ) -> AsyncGenerator[str, None]:
     """
     Convert a LiteLLM streaming response to Anthropic SSE format and record usage.
@@ -261,6 +312,7 @@ async def stream_as_anthropic(
     input_tokens = 0
     output_tokens = 0
     stop_reason = "end_turn"
+    response_text: list[str] = []  # accumulated assistant text for chat history
 
     # Content block tracking — blocks are opened lazily as content arrives
     text_block_index: int | None = None
@@ -279,6 +331,18 @@ async def stream_as_anthropic(
     yield _sse("ping", {"type": "ping"})
 
     async for chunk in litellm_stream:
+        # Authoritative usage arrives on a trailing chunk that has empty choices
+        # (stream_options include_usage). Read it BEFORE the `continue` below,
+        # otherwise that chunk is skipped and we keep stale partial counts.
+        usage = getattr(chunk, "usage", None)
+        if usage:
+            pt = getattr(usage, "prompt_tokens", 0) or 0
+            ct = getattr(usage, "completion_tokens", 0) or 0
+            if pt:
+                input_tokens = pt
+            if ct:
+                output_tokens = ct
+
         choice = chunk.choices[0] if chunk.choices else None
         if not choice:
             continue
@@ -295,6 +359,7 @@ async def stream_as_anthropic(
             )
 
         if text_content:
+            response_text.append(text_content)
             if text_block_index is None:
                 text_block_index = next_block_index
                 next_block_index += 1
@@ -340,12 +405,6 @@ async def stream_as_anthropic(
         if finish_reason == "tool_calls":
             stop_reason = "tool_use"
 
-        # Usage arrives on the final chunk (Azure OpenAI with stream_options)
-        usage = getattr(chunk, "usage", None)
-        if usage:
-            input_tokens = getattr(usage, "prompt_tokens", 0) or 0
-            output_tokens = getattr(usage, "completion_tokens", 0) or 0
-
     # Close all open content blocks in index order
     open_indices = sorted(
         ([text_block_index] if text_block_index is not None else [])
@@ -368,14 +427,44 @@ async def stream_as_anthropic(
         "usage": {"output_tokens": output_tokens},
     })
 
-    await _record_usage(user_id, virtual_key_id, session_id, model, input_tokens, output_tokens)
+    # Record two views of usage:
+    #  - billed (input_tokens/output_tokens): real tokens charged by the model,
+    #    which include Claude Code's system prompt + tool schemas (~20k/turn).
+    #  - content (content_*): just the user's message and the model's reply text.
+    answer = "".join(response_text)
+    content_input = _count_tokens(prompt)
+    content_output = _count_tokens(answer) if answer else output_tokens
+
+    await _record_usage(
+        user_id, virtual_key_id, session_id, model,
+        input_tokens, output_tokens, content_input, content_output,
+    )
+    await _record_chat(
+        user_id, virtual_key_id, session_id, model, prompt, answer,
+        input_tokens, output_tokens, content_input, content_output,
+    )
 
     if redis is not None:
+        # Rate limit on real (billed) tokens — the actual cost / context usage.
         total_tokens = input_tokens + output_tokens
         async with AsyncSessionLocal() as db:
             await decrement_rate_limit(user_id, total_tokens, db, redis)
 
     yield _sse("message_stop", {"type": "message_stop"})
+
+
+def _count_tokens(text: str) -> int:
+    """
+    Token count of a piece of text, used to record only the user's / assistant's
+    actual message content (excluding Claude Code's system prompt + tool schemas).
+    Falls back to a rough char estimate if the tokenizer is unavailable.
+    """
+    if not text:
+        return 0
+    try:
+        return litellm.token_counter(model="gpt-4o", text=text)
+    except Exception:
+        return max(1, round(len(text) / 4))
 
 
 async def _record_usage(
@@ -385,6 +474,8 @@ async def _record_usage(
     model: str,
     input_tokens: int,
     output_tokens: int,
+    content_input_tokens: int,
+    content_output_tokens: int,
 ) -> None:
     try:
         async with AsyncSessionLocal() as db:
@@ -395,10 +486,45 @@ async def _record_usage(
                 model=model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                content_input_tokens=content_input_tokens,
+                content_output_tokens=content_output_tokens,
             ))
             await db.commit()
     except Exception:
         logger.exception("Failed to record token usage")
+
+
+async def _record_chat(
+    user_id: str,
+    virtual_key_id: str,
+    session_id: str | None,
+    model: str,
+    prompt: str,
+    response: str,
+    input_tokens: int,
+    output_tokens: int,
+    content_input_tokens: int,
+    content_output_tokens: int,
+) -> None:
+    if not prompt and not response:
+        return
+    try:
+        async with AsyncSessionLocal() as db:
+            db.add(ChatMessage(
+                user_id=user_id,
+                virtual_key_id=virtual_key_id,
+                session_id=session_id,
+                model=model,
+                prompt=prompt,
+                response=response,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                content_input_tokens=content_input_tokens,
+                content_output_tokens=content_output_tokens,
+            ))
+            await db.commit()
+    except Exception:
+        logger.exception("Failed to record chat message")
 
 
 # ---------------------------------------------------------------------------
@@ -447,4 +573,5 @@ async def proxy(
         virtual_key_id=virtual_key_id,
         session_id=session_id,
         redis=redis,
+        prompt=extract_last_user_text(body),
     )

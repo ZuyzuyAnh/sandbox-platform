@@ -113,17 +113,30 @@ async def create_session(
 
     image = ROLE_IMAGE.get(current_user.sandbox_role or "", settings.vscode_image)
 
-    try:
-        result = await create_vscode_sandbox(
-            image=image,
+    async def _spawn(img: str):
+        return await create_vscode_sandbox(
+            image=img,
             timeout=settings.session_ttl_seconds,
             env=sandbox_env,
             metadata={"type": "vscode"},
             network_policy=network_policy,
         )
+
+    try:
+        result = await _spawn(image)
     except httpx.HTTPStatusError as e:
-        logger.error("OpenSandbox create error: %s", e)
-        raise HTTPException(status_code=502, detail=f"OpenSandbox error: {e.response.text}")
+        # A role-specific image that hasn't been built/pushed yet must not break
+        # the session — degrade gracefully to the default VS Code image.
+        if image != settings.vscode_image and "IMAGE_PULL" in e.response.text.upper():
+            logger.warning("[role-image] %s unavailable, falling back to %s", image, settings.vscode_image)
+            try:
+                result = await _spawn(settings.vscode_image)
+            except httpx.HTTPStatusError as e2:
+                logger.error("OpenSandbox create error (fallback): %s", e2)
+                raise HTTPException(status_code=502, detail=f"OpenSandbox error: {e2.response.text}")
+        else:
+            logger.error("OpenSandbox create error: %s", e)
+            raise HTTPException(status_code=502, detail=f"OpenSandbox error: {e.response.text}")
     except Exception as e:
         logger.error("Unexpected create error: %s", type(e).__name__, exc_info=True)
         raise HTTPException(status_code=502, detail=f"OpenSandbox error: {e}")

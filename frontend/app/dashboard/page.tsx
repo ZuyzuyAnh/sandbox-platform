@@ -1,9 +1,6 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
-import AdminGroupsPanel from '@/components/AdminGroupsPanel'
-import AdminUserPanel from '@/components/AdminUserPanel'
 import MetricsBar from '@/components/MetricsBar'
 import PolicyChangeNotification from '@/components/PolicyChangeNotification'
 import PoolGrid from '@/components/PoolGrid'
@@ -16,9 +13,6 @@ import { ThemeToggle } from '@/lib/theme'
 export default function DashboardPage() {
   const { user, logout } = useAuth()
   const isAdmin = user?.role === 'admin'
-
-  const [groupsPanelOpen, setGroupsPanelOpen] = useState(false)
-  const [userPanelOpen, setUserPanelOpen] = useState(false)
 
   return (
     <div className="flex flex-col min-h-screen bg-app">
@@ -38,27 +32,15 @@ export default function DashboardPage() {
         <div className="flex items-center gap-2">
           {isAdmin && (
             <>
-              <button
-                onClick={() => { setUserPanelOpen(true); setGroupsPanelOpen(false) }}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg text-fg-muted hover:text-fg hover:bg-raised transition-colors cursor-pointer"
-              >
-                Users
-              </button>
-              <button
-                onClick={() => { setGroupsPanelOpen(true); setUserPanelOpen(false) }}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg text-fg-muted hover:text-fg hover:bg-raised transition-colors cursor-pointer"
-              >
-                Groups
-              </button>
               <Link
-                href="/admin/config"
+                href="/admin/users"
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                   <path d="M2 6h8M6 2v8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
                   <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2" />
                 </svg>
-                LLM Gateway
+                Admin console
               </Link>
               <div className="w-px h-4 bg-line mx-1" />
             </>
@@ -118,10 +100,6 @@ export default function DashboardPage() {
           </div>
         </section>
       )}
-
-      {/* Admin panels */}
-      {groupsPanelOpen && <AdminGroupsPanel onClose={() => setGroupsPanelOpen(false)} />}
-      {userPanelOpen && <AdminUserPanel onClose={() => setUserPanelOpen(false)} />}
     </div>
   )
 }
