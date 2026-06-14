@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends k6 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir pytest pytest-asyncio requests
+RUN pip3 install --no-cache-dir --break-system-packages pytest pytest-asyncio requests
 
 RUN npm install -g newman playwright
 

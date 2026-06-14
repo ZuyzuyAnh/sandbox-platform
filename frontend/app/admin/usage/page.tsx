@@ -61,10 +61,21 @@ const ChartTooltip = ({ active, payload, label }: any) => {
   )
 }
 
-function StatCard({ label, value, sub, delay }: { label: string; value: string; sub?: string; delay: number }) {
+function Hint({ text }: { text: string }) {
+  return (
+    <span
+      title={text}
+      className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-fg-subtle/40 text-[8px] text-fg-subtle cursor-help align-middle ml-1"
+    >
+      ?
+    </span>
+  )
+}
+
+function StatCard({ label, value, sub, delay, hint }: { label: string; value: string; sub?: string; delay: number; hint?: string }) {
   return (
     <div className="bg-surface border border-line rounded-xl p-4 animate-rise" style={{ animationDelay: `${delay}ms` }}>
-      <p className="text-[10px] font-medium text-fg-subtle uppercase tracking-widest mb-1">{label}</p>
+      <p className="text-[10px] font-medium text-fg-subtle uppercase tracking-widest mb-1">{label}{hint && <Hint text={hint} />}</p>
       <p className="text-2xl font-bold font-mono text-fg">{value}</p>
       {sub && <p className="text-xs text-fg-subtle mt-1">{sub}</p>}
     </div>
@@ -179,11 +190,15 @@ export default function UsagePage() {
   const totals = useMemo(() => {
     let input = 0
     let output = 0
+    let contentIn = 0
+    let contentOut = 0
     for (const r of rows) {
       input += r.input_tokens
       output += r.output_tokens
+      contentIn += r.content_input_tokens ?? 0
+      contentOut += r.content_output_tokens ?? 0
     }
-    return { input, output, tokens: input + output, requests: rows.length }
+    return { input, output, tokens: input + output, contentIn, contentOut, content: contentIn + contentOut, requests: rows.length }
   }, [rows])
 
   const maxKeyTokens = byKey[0]?.tokens ?? 1
@@ -253,9 +268,12 @@ export default function UsagePage() {
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-3 mb-4">
-        <StatCard label="Total tokens" value={formatTokens(totals.tokens)} sub={`Last ${RANGE_DAYS[range]} days`} delay={0} />
-        <StatCard label="Input tokens" value={formatTokens(totals.input)} delay={50} />
-        <StatCard label="Output tokens" value={formatTokens(totals.output)} delay={100} />
+        <StatCard label="Total tokens" value={formatTokens(totals.tokens)} sub={`${formatTokens(totals.content)} message content`} delay={0}
+          hint="Billed total — includes the agent's system prompt & tool definitions (~15-20k fixed overhead per request). The number below is just the conversation text." />
+        <StatCard label="Input tokens" value={formatTokens(totals.input)} sub={`${formatTokens(totals.contentIn)} sent`} delay={50}
+          hint="Billed input (full context). 'sent' = tokens of just what users typed." />
+        <StatCard label="Output tokens" value={formatTokens(totals.output)} sub={`${formatTokens(totals.contentOut)} reply`} delay={100}
+          hint="Billed output. 'reply' = tokens of the models' text answers." />
         <StatCard label="Requests" value={totals.requests.toLocaleString()} sub={`${keys.filter(k => k.is_active).length} active keys`} delay={150} />
       </div>
 
@@ -447,9 +465,15 @@ export default function UsagePage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line bg-raised/40">
-                  {['Time', 'Model', 'Key', 'User', 'Input', 'Output'].map(h => (
+                  {['Time', 'Model', 'Key', 'User'].map(h => (
                     <th key={h} className="px-5 py-2 text-left text-xs font-medium text-fg-subtle">{h}</th>
                   ))}
+                  <th className="px-5 py-2 text-left text-xs font-medium text-fg-subtle">
+                    Input<Hint text="Billed input tokens (full context). Hover a value to see how many were just the user's message." />
+                  </th>
+                  <th className="px-5 py-2 text-left text-xs font-medium text-fg-subtle">
+                    Output<Hint text="Billed output tokens. Hover a value to see the model's reply content size." />
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -465,8 +489,14 @@ export default function UsagePage() {
                     <td className="px-5 py-2.5 text-xs text-fg-subtle truncate max-w-[160px]">
                       {emailByUserId[r.user_id] ?? <span className="font-mono">{r.user_id.slice(0, 8)}</span>}
                     </td>
-                    <td className="px-5 py-2.5 font-mono text-xs text-fg-subtle">{r.input_tokens.toLocaleString()}</td>
-                    <td className="px-5 py-2.5 font-mono text-xs text-accent">{r.output_tokens.toLocaleString()}</td>
+                    <td className="px-5 py-2.5 font-mono text-xs text-fg-subtle cursor-help" title={`${r.content_input_tokens ?? 0} tokens were the user's message`}>
+                      {r.input_tokens.toLocaleString()}
+                      <span className="text-fg-subtle/50"> · {(r.content_input_tokens ?? 0).toLocaleString()} sent</span>
+                    </td>
+                    <td className="px-5 py-2.5 font-mono text-xs text-accent cursor-help" title={`${r.content_output_tokens ?? 0} tokens were the model's reply text`}>
+                      {r.output_tokens.toLocaleString()}
+                      <span className="text-accent/50"> · {(r.content_output_tokens ?? 0).toLocaleString()} reply</span>
+                    </td>
                   </tr>
                 ))}
               </tbody>

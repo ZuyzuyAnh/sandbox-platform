@@ -4,11 +4,14 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   createVirtualKey,
   deleteVirtualKey,
+  fetchGuardrails,
+  fetchKeyGuardrails,
   fetchUsers,
   fetchVirtualKeys,
+  setKeyGuardrails,
   updateVirtualKey,
 } from '@/lib/api'
-import type { VirtualKey, VirtualKeyCreated } from '@/types'
+import type { GuardrailPolicy, VirtualKey, VirtualKeyCreated } from '@/types'
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -111,6 +114,27 @@ function EditKeyModal({ vk, onClose, onSaved }: { vk: VirtualKey; onClose: () =>
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [policies, setPolicies] = useState<GuardrailPolicy[]>([])
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    Promise.all([
+      fetchGuardrails().catch(() => [] as GuardrailPolicy[]),
+      fetchKeyGuardrails(vk.id).catch(() => [] as string[]),
+    ]).then(([all, attached]) => {
+      setPolicies(all)
+      setSelected(new Set(attached))
+    })
+  }, [vk.id])
+
+  function togglePolicy(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
@@ -120,6 +144,7 @@ function EditKeyModal({ vk, onClose, onSaved }: { vk: VirtualKey; onClose: () =>
         label: label.trim() || null,
         token_limit: limit.trim() ? Number(limit) : null,
       })
+      await setKeyGuardrails(vk.id, Array.from(selected))
       onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update key')
@@ -192,6 +217,51 @@ function EditKeyModal({ vk, onClose, onSaved }: { vk: VirtualKey; onClose: () =>
               Used so far: <span className="font-mono text-fg-muted">{vk.tokens_used.toLocaleString()}</span> tokens
             </p>
           </div>
+
+          {/* Guardrails */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-medium text-fg-muted">Guardrails</label>
+              <span className="text-[10px] text-fg-subtle">{selected.size} of {policies.length} active</span>
+            </div>
+            {policies.length === 0 ? (
+              <p className="text-[11px] text-fg-subtle bg-app border border-line rounded-lg px-3 py-2.5">
+                No guardrail policies yet. Create them in the Guardrails tab.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-1.5 max-h-44 overflow-y-auto">
+                {policies.map(p => {
+                  const on = selected.has(p.id)
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => togglePolicy(p.id)}
+                      className={`flex items-start gap-2.5 px-3 py-2 rounded-lg border text-left transition-colors cursor-pointer ${
+                        on ? 'bg-accent/10 border-accent/30' : 'bg-app border-line hover:border-fg-subtle/40'
+                      }`}
+                    >
+                      <span className={`flex-shrink-0 mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                        on ? 'bg-accent border-accent' : 'border-line'
+                      }`}>
+                        {on && (
+                          <svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M2 6.5L4.5 9 10 3" stroke="rgb(var(--accent-fg))" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        )}
+                      </span>
+                      <span className="min-w-0">
+                        <span className={`block text-xs font-medium truncate ${on ? 'text-fg' : 'text-fg-muted'}`}>
+                          {p.name}
+                          {!p.enabled && <span className="ml-2 text-[10px] text-fg-subtle">(disabled)</span>}
+                        </span>
+                        {p.description && <span className="block text-[11px] text-fg-subtle truncate">{p.description}</span>}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
           {error && (
             <p role="alert" className="text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">{error}</p>
           )}
